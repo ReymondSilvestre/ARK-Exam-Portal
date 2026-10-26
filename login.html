@@ -4,20 +4,36 @@
 <body class="auth-page">
 <main class="auth-card">
   <div class="brand"><span class="mark">ARK</span><span>Exam Scanner</span></div>
-  <h1>Sign in</h1>
-  <p class="muted">Use the email and password your IT administrator gave you.</p>
   <div id="msg" class="notice" hidden role="alert"></div>
-  <form id="f" novalidate>
-    <label>Email<input id="email" type="email" autocomplete="username" required></label>
-    <label>Password<input id="pw" type="password" autocomplete="current-password" required></label>
-    <button class="btn primary block" id="go">Sign in</button>
-  </form>
-  <button class="link" id="forgot" type="button">Email me a password reset link</button>
+
+  <section id="signin">
+    <h1>Sign in</h1>
+    <p class="muted">Use the email and password your IT administrator gave you.</p>
+    <form id="f" novalidate>
+      <label>Email<input id="email" type="email" autocomplete="username" required></label>
+      <label>Password<input id="pw" type="password" autocomplete="current-password" required></label>
+      <button class="btn primary block" id="go">Sign in</button>
+    </form>
+    <button class="link" id="forgot" type="button">Forgot your password? Ask the IT Admin to reset it</button>
+  </section>
+
+  <section id="reset" hidden>
+    <h1>Request a password reset</h1>
+    <p class="muted">Your request goes to the IT Administrator. Once approved, a secure reset link is emailed to you.</p>
+    <form id="rq" novalidate>
+      <label>Your account email<input id="rqEmail" type="email" autocomplete="email" required></label>
+      <label>Employee ID <small>Optional, but it helps the administrator confirm it is you.</small>
+        <input id="rqEmp" autocomplete="off"></label>
+      <button class="btn primary block" id="rqGo">Send request to IT Admin</button>
+    </form>
+    <button class="link" id="back" type="button">Back to sign in</button>
+  </section>
 </main>
 <script type="module">
-import { login, resetPassword, friendlyError, destinationFor, logout } from "./js/auth.js";
+import { login, requestPasswordReset, friendlyError, destinationFor } from "./js/auth.js";
 const $ = (id) => document.getElementById(id), msg = $("msg");
 const show = (t, ok) => { msg.textContent = t; msg.hidden = false; msg.className = "notice " + (ok ? "ok" : "err"); };
+const view = (v) => { $("signin").hidden = v !== "signin"; $("reset").hidden = v !== "reset"; msg.hidden = true; };
 if (new URLSearchParams(location.search).has("denied")) show("Your account does not have access to that page.");
 
 $("f").addEventListener("submit", async (e) => {
@@ -27,10 +43,23 @@ $("f").addEventListener("submit", async (e) => {
   try { location.href = await destinationFor(c.user); }
   catch (err) { await import("./js/auth.js").then(m => m.auth.signOut()); show(err.message); $("go").disabled = false; }
 });
-$("forgot").addEventListener("click", async () => {
-  const email = $("email").value.trim();
-  if (!email) return show("Enter your email above first.");
-  try { await resetPassword(email); } catch (e) { /* do not reveal whether the email exists */ }
-  show("If that email is registered, a reset link is on its way.", true);
+
+$("forgot").onclick = () => { $("rqEmail").value = $("email").value.trim(); view("reset"); $("rqEmail").focus(); };
+$("back").onclick = () => view("signin");
+
+$("rq").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = $("rqEmail").value.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return show("Enter the email address of your account.");
+  // Gentle guard against repeat clicks: one request per email every 10 minutes from this browser.
+  const key = "resetReq:" + email;
+  try { if (Date.now() - Number(localStorage.getItem(key) || 0) < 600000) return show("You already sent a request a moment ago. Please wait for the IT Administrator.", true); } catch {}
+  $("rqGo").disabled = true;
+  try {
+    await requestPasswordReset(email, $("rqEmp").value);
+    try { localStorage.setItem(key, String(Date.now())); } catch {}
+    view("signin"); show("Request sent. The IT Administrator will email a reset link to the address on your account.", true);
+  } catch (err) { show("Could not send the request. Check your connection and try again."); }
+  finally { $("rqGo").disabled = false; }
 });
 </script></body></html>

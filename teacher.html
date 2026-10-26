@@ -1,242 +1,91 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Teacher - ARK Exam Scanner</title><link rel="stylesheet" href="css/style.css">
-<style id="pg">@page{size:A4;margin:6mm}</style>
-<style>
-.wrap{max-width:64rem;margin:0 auto;padding:1rem}
-.tabs{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:1rem}.tabs button.on{background:var(--red);color:#fff;border-color:var(--red)}
-.vid,#cv{width:100%;max-height:60vh;background:#000;border-radius:8px;object-fit:contain}
-.q{display:grid;grid-template-columns:repeat(auto-fill,minmax(8rem,1fr));gap:.4rem;margin:.8rem 0}
-.q div{border:1px solid var(--line);border-radius:6px;padding:.3rem;font-size:.85rem}.q div.bad{border-color:var(--red);background:#fdeced}
-.q select{display:inline;width:auto;margin:0;padding:.15rem}
-#sheetWrap svg{width:100%;max-width:34rem;border:1px solid var(--line);background:#fff}
-@media print{.noprint{display:none!important}body{background:#fff}.wrap{padding:0;max-width:none}
-#sheetWrap svg{width:188mm;max-width:none;border:0;display:block;margin:0 auto}}
-</style></head><body><div class="wrap">
+<style id="pg">@page{margin:10mm}</style>
+<!-- SheetJS: used only to import Excel class lists and to export results to .xlsx -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head><body><div class="wrap">
 <div class="top noprint"><div class="brand"><span class="mark">ARK</span><span id="who">Teacher</span></div>
 <span><span id="sync" class="sync"><i class="dot"></i><span>Online</span></span> <button class="btn small" id="out">Sign out</button></span></div>
 <div id="msg" class="notice noprint" hidden role="alert"></div>
 <div class="tabs noprint" id="tabs">
-<button class="btn" data-t="classes">Classes</button><button class="btn" data-t="students">Students</button>
-<button class="btn" data-t="exams">Examinations</button><button class="btn" data-t="sheet">Answer sheet</button>
+<button class="btn" data-t="classes">Sections</button><button class="btn" data-t="students">Students</button>
+<button class="btn" data-t="exams">Examinations</button><button class="btn" data-t="sheet">Answer sheets</button>
 <button class="btn" data-t="scan">Scanner</button><button class="btn" data-t="results">Results</button></div>
 
-<section data-s="classes"><div class="panel"><h2>Classes</h2>
-<div class="row noprint"><label>Class / section<input id="clName" placeholder="Grade 8 - Ruby"></label><button class="btn primary" id="clAdd">Add class</button></div>
+<!-- SECTIONS -->
+<section data-s="classes"><div class="panel"><h2>Sections</h2>
+<div class="row noprint"><label>Class / section<input id="clName" placeholder="Grade 8 - Ruby"></label><button class="btn primary" id="clAdd">Add section</button></div>
 <div class="tablewrap"><table id="clTbl"></table></div></div></section>
 
+<!-- STUDENTS -->
 <section data-s="students" hidden><div class="panel"><h2>Students</h2>
-<div class="row"><label>Class<select id="stClass"></select></label><label>Student no.<input id="stNo"></label>
-<label>Full name<input id="stName"></label><button class="btn primary" id="stAdd">Add student</button></div>
-<div class="row" style="margin-top:.8rem"><label>Import CSV (columns: number, name)<input type="file" id="stCsv" accept=".csv,.txt"></label></div>
+<div class="row"><label>Section<select id="stClass"></select></label>
+<label>Full name<input id="stName" autocomplete="off"></label>
+<label>Exam ID No.<input id="stNext" readonly aria-describedby="stNextHelp"><small id="stNextHelp">Created automatically.</small></label>
+<button class="btn primary" id="stAdd">Add student</button></div>
+<div class="row" style="margin-top:.8rem"><label>Import a class list (Excel or CSV)
+<input type="file" id="stCsv" accept=".csv,.txt,.xlsx,.xls">
+<small>Columns: <b>Exam ID No.</b>, <b>Name</b>. If the Exam ID No. column is missing or empty, one is created automatically. A file with names only also works.</small></label></div>
 <div class="tablewrap"><table id="stTbl"></table></div></div></section>
 
-<section data-s="exams" hidden><div class="panel"><h2>New examination</h2>
+<!-- EXAMINATIONS -->
+<section data-s="exams" hidden><div class="panel"><h2 id="exHead">New examination</h2>
 <div class="row"><label>Title<input id="exTitle"></label><label>Subject<input id="exSub"></label>
-<label>Class<select id="exClass"></select></label><label>Date<input type="date" id="exDate"></label></div>
-<div class="row" style="margin-top:.8rem"><label>Questions<select id="exN"></select></label>
-<label>Choices<select id="exCh"><option value="4">A-D</option><option value="5">A-E</option></select></label>
-<label>Passing %<input type="number" id="exPass" value="75" min="1" max="100"></label>
-<label>Answer key (e.g. ABCDDCBA...)<input id="exKey" autocomplete="off"></label><button class="btn primary" id="exAdd">Save exam</button></div>
-<small>The key length must equal the number of questions.</small></div>
+<label>Section<select id="exClass"></select></label><label>Date<input type="date" id="exDate"></label></div>
+<div class="row" style="margin-top:.8rem"><label>Number of items<input type="number" id="exN" min="1" max="60" value="20"></label>
+<label>Multiple choice letters<select id="exCh"><option value="5">A-E</option><option value="4">A-D</option></select></label>
+<label>Passing %<input type="number" id="exPass" value="75" min="1" max="100"></label></div>
+
+<h3>Item types and answer key</h3>
+<small>Tap a number to open it. Multiple choice and True/False are scanned automatically. Identification and essay are checked by you after scanning.</small>
+<div class="toolbar" style="margin-top:.6rem">
+<label>Set items from<input type="number" id="exFrom" min="1" placeholder="1"></label>
+<label>to<input type="number" id="exTo" min="1" placeholder="10"></label>
+<label class="grow">as<select id="exBulkType"></select></label>
+<button class="btn" id="exBulk" type="button">Apply to range</button></div>
+<div class="toolbar"><button class="btn small" id="exOpenAll" type="button">Expand all</button>
+<button class="btn small" id="exCloseAll" type="button">Collapse all</button>
+<label style="flex:0 0 auto;display:flex;gap:.4rem;align-items:center;font-weight:400"><input type="checkbox" id="exAuto" checked style="width:auto;margin:0"> Jump to the next number after choosing a key</label></div>
+<div class="items" id="exItems"></div>
+<div class="row" style="margin-top:1rem"><button class="btn primary" id="exAdd">Save exam</button><button class="btn" id="exCancel" hidden>Cancel editing</button></div>
+</div>
 <div class="panel"><div class="tablewrap"><table id="exTbl"></table></div></div></section>
 
-<section data-s="sheet" hidden><div class="panel"><h2>Answer sheet</h2>
+<!-- ANSWER SHEETS -->
+<section data-s="sheet" hidden><div class="panel"><h2 class="noprint">Answer sheets</h2>
 <div class="row noprint"><label>Examination<select id="shExam"></select></label>
-<label>Paper<select id="paper"><option>A4</option><option>Letter</option></select></label>
-<label>School name<input id="school"></label><button class="btn primary" id="shPrint">Print / save as PDF</button></div>
-<small class="noprint">Print at 100% scale (no "fit to page"). Use dark pen or pencil on the bubbles.</small>
+<label>Print for<select id="shFor"></select></label>
+<label id="shCopiesL">Number of blank sheets<input type="number" id="shCopies" value="2" min="1" max="500"></label>
+<label>School name<input id="school"></label><label>Teacher<input id="teacher"></label>
+<button class="btn primary" id="shPrint">Print / save as PDF</button></div>
+<small class="noprint">Paper: <b>8.5 x 13 in, landscape</b> (Folio / Long bond), <b>two answer sheets per page</b>. In the print dialog choose that paper size, <b>Margins: None</b> and <b>Scale: 100%</b>. Cut each page along the dotted line: scan one sheet at a time. Named sheets are printed in alphabetical order for the chosen section.</small>
+<p class="noprint muted" id="shInfo"></p>
 <div id="sheetWrap" style="margin-top:1rem"></div></div></section>
 
+<!-- SCANNER -->
 <section data-s="scan" hidden><div class="panel"><h2>Scan answer sheets</h2>
-<div class="row"><label>Examination<select id="scExam"></select></label>
+<div class="row"><label>Examination<select id="scExam"></select></label><label>Section<select id="scSec"></select></label>
 <button class="btn" id="camBtn">Start camera</button><button class="btn primary" id="capBtn" disabled>Capture</button>
 <label>or upload photo<input type="file" id="file" accept="image/*" capture="environment"></label></div>
 <video id="vid" class="vid" playsinline autoplay muted hidden></video>
 <canvas id="cv" hidden></canvas>
-<div id="review" hidden><div class="row" style="margin-top:.8rem"><label>Student<select id="scStu"></select></label>
+<div id="review" hidden><p id="reviewNote" class="muted" hidden></p>
+<div class="row" style="margin-top:.8rem"><label>Exam ID No. (type it from the sheet)<input id="scId" autocomplete="off"><small id="scHint"></small></label>
+<label>Student<select id="scStu"></select></label>
 <button class="btn primary" id="scSave">Save result</button></div>
 <p id="sum"><b></b></p><div class="q" id="grid"></div></div></div></section>
 
+<!-- RESULTS -->
 <section data-s="results" hidden><div class="panel"><h2>Results</h2>
 <div class="row noprint"><label>Examination<select id="reExam"></select></label>
-<button class="btn" id="csv">Export CSV</button><button class="btn" onclick="print()">Print report</button></div>
+<label>Section<select id="reSec"></select></label>
+<label>Sort by<select id="reSort">
+<option value="sec_name">Section, then name</option><option value="sec_score">Section, then highest score</option>
+<option value="score">Highest score (all sections)</option><option value="wrong">Most wrong answers</option>
+<option value="name">Name A-Z</option><option value="id">Exam ID No.</option></select></label>
+<button class="btn primary" id="xlsx">Download Excel</button><button class="btn" onclick="print()">Print report</button></div>
 <p id="stats"></p><div class="tablewrap"><table id="reTbl"></table></div>
 <h2 style="margin-top:1rem">Item analysis (% correct)</h2><div class="q" id="items"></div></div></section>
 </div>
-<script type="module">
-import { requireRole, logout, db, esc, friendlyError } from "./js/auth.js";
-import { collection, query, where, getDocs, getDoc, doc, setDoc, addDoc, writeBatch, serverTimestamp }
-  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-const $ = (id) => document.getElementById(id);
-const { user, profile } = await requireRole(["teacher"]);
-$("who").textContent = profile.displayName; $("out").onclick = logout;
-const flash = (t, ok) => { const m = $("msg"); m.textContent = t; m.className = "notice noprint " + (ok ? "ok" : "err"); m.hidden = false; clearTimeout(flash.t); flash.t = setTimeout(() => (m.hidden = true), 7000); };
-const net = () => { $("sync").className = "sync" + (navigator.onLine ? "" : " off"); $("sync").lastElementChild.textContent = navigator.onLine ? "Online" : "Offline - changes will not save"; };
-addEventListener("online", net); addEventListener("offline", net); net();
-const run = async (fn) => { try { await fn(); } catch (e) { flash(friendlyError(e)); } };
-
-/* ---------- data ---------- */
-const S = { classes: [], students: [], exams: [], results: [] }, L = "ABCDE";
-const load = async (c, ...w) => (await getDocs(query(collection(db, c), where("ownerUid", "==", user.uid), ...w))).docs.map((d) => ({ id: d.id, ...d.data() }));
-const keep = (id, html) => { const el = $(id), v = el.value; el.innerHTML = html; if ([...el.options].some((o) => o.value === v)) el.value = v; };
-const opts = (a, f, empty) => a.map((x) => `<option value="${esc(x.id)}">${esc(f(x))}</option>`).join("") || `<option value="">${empty}</option>`;
-async function refresh() {
-  await run(async () => { [S.classes, S.students, S.exams] = await Promise.all([load("classes"), load("students"), load("examinations")]); render(); });
-}
-function render() {
-  const co = opts(S.classes, (c) => c.name, "Add a class first"), eo = opts(S.exams, (e) => `${e.title} (${e.className})`, "Create an exam first");
-  ["stClass", "exClass"].forEach((i) => keep(i, co)); ["shExam", "scExam", "reExam"].forEach((i) => keep(i, eo));
-  if (!$("exN").options.length) $("exN").innerHTML = [10, 20, 30, 40, 50, 60, 80, 100].map((n) => `<option>${n}</option>`).join("");
-  $("clTbl").innerHTML = "<tr><th>Class</th><th>Students</th></tr>" + (S.classes.map((c) => `<tr><td>${esc(c.name)}</td><td>${S.students.filter((s) => s.classId === c.id).length}</td></tr>`).join("") || "<tr><td colspan=2>No classes yet.</td></tr>");
-  const st = S.students.filter((s) => s.classId === $("stClass").value).sort((a, b) => a.name.localeCompare(b.name));
-  $("stTbl").innerHTML = "<tr><th>No.</th><th>Name</th></tr>" + (st.map((s) => `<tr><td>${esc(s.number)}</td><td>${esc(s.name)}</td></tr>`).join("") || "<tr><td colspan=2>No students in this class.</td></tr>");
-  $("exTbl").innerHTML = "<tr><th>Title</th><th>Class</th><th>Date</th><th>Items</th><th>Pass %</th></tr>" + (S.exams.map((e) => `<tr><td>${esc(e.title)}</td><td>${esc(e.className)}</td><td>${esc(e.date)}</td><td>${e.n}</td><td>${e.passing}</td></tr>`).join("") || "<tr><td colspan=5>No examinations yet.</td></tr>");
-  drawSheet();
-}
-function show(t) { document.querySelectorAll("[data-s]").forEach((s) => (s.hidden = s.dataset.s !== t)); document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.t === t)); if (t === "results") loadResults(); if (t === "sheet") drawSheet(); }
-$("tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) show(b.dataset.t); }; show("classes");
-$("stClass").onchange = render;
-
-/* ---------- classes, students, exams ---------- */
-$("clAdd").onclick = () => run(async () => { const name = $("clName").value.trim(); if (!name) return flash("Enter a class name.");
-  await addDoc(collection(db, "classes"), { ownerUid: user.uid, name, createdAt: serverTimestamp() }); $("clName").value = ""; await refresh(); flash("Class added.", 1); });
-const clsOf = (id) => S.classes.find((c) => c.id === id);
-$("stAdd").onclick = () => run(async () => { const c = clsOf($("stClass").value), number = $("stNo").value.trim(), name = $("stName").value.trim();
-  if (!c || !number || !name) return flash("Choose a class and enter a number and name.");
-  await addDoc(collection(db, "students"), { ownerUid: user.uid, classId: c.id, className: c.name, number, name, createdAt: serverTimestamp() });
-  $("stNo").value = $("stName").value = ""; await refresh(); });
-$("stCsv").onchange = (e) => run(async () => { const c = clsOf($("stClass").value), f = e.target.files[0]; if (!c || !f) return flash("Choose a class first.");
-  const rows = (await f.text()).split(/\r?\n/).map((l) => l.split(/[,;\t]/).map((x) => x.replace(/^"|"$/g, "").trim())).filter((r) => r.length > 1 && r[0] && r[1] && !/name/i.test(r[1]));
-  for (let i = 0; i < rows.length; i += 400) { const b = writeBatch(db);
-    rows.slice(i, i + 400).forEach(([number, ...n]) => b.set(doc(collection(db, "students")), { ownerUid: user.uid, classId: c.id, className: c.name, number, name: n.join(" "), createdAt: serverTimestamp() })); await b.commit(); }
-  e.target.value = ""; await refresh(); flash(`Imported ${rows.length} students.`, 1); });
-$("exAdd").onclick = () => run(async () => { const c = clsOf($("exClass").value), n = +$("exN").value, ch = +$("exCh").value, key = $("exKey").value.toUpperCase().replace(/[\s,]/g, "");
-  if (!c || !$("exTitle").value.trim()) return flash("Enter a title and choose a class.");
-  if (key.length !== n) return flash(`The key has ${key.length} answers but the exam has ${n} questions.`);
-  if ([...key].some((k) => !L.slice(0, ch).includes(k))) return flash(`The key may only use ${L.slice(0, ch).split("").join(", ")}.`);
-  await addDoc(collection(db, "examinations"), { ownerUid: user.uid, title: $("exTitle").value.trim(), subject: $("exSub").value.trim(), classId: c.id, className: c.name,
-    date: $("exDate").value, n, choices: ch, passing: +$("exPass").value || 75, key: [...key], createdAt: serverTimestamp() });
-  $("exKey").value = $("exTitle").value = ""; await refresh(); flash("Examination saved.", 1); });
-
-/* ---------- answer sheet (one geometry shared by printing and scanning) ---------- */
-const G = { mk: [[10, 10], [190, 10], [10, 270], [190, 270]], r: 2.6, pitch: 7.5 };
-const qPos = (i, j) => [16 + Math.floor(i / 25) * 42 + 9 + j * G.pitch, 78 + (i % 25) * 7];
-function sheetSVG(ex, school) {
-  const T = (x, y, s, t, a = "start", w = 400) => `<text x="${x}" y="${y}" font-size="${s}" text-anchor="${a}" font-weight="${w}">${esc(t)}</text>`;
-  let s = `<svg viewBox="0 0 200 280" xmlns="http://www.w3.org/2000/svg" font-family="Arial,sans-serif">`;
-  G.mk.forEach(([x, y]) => (s += `<rect x="${x - 5}" y="${y - 5}" width="10" height="10"/>`));
-  s += T(100, 20, 5.5, school || "School name", "middle", 700) + T(100, 27, 4, ex.title, "middle", 700);
-  s += T(20, 40, 3.5, "Name: ______________________________") + T(135, 40, 3.5, "Student no.: __________");
-  s += T(20, 50, 3.5, "Class: " + ex.className) + T(135, 50, 3.5, "Date: " + (ex.date || "__________"));
-  s += T(20, 60, 3.5, "Subject: " + (ex.subject || "")) + T(135, 60, 3.5, ex.n + " items");
-  s += T(20, 68, 2.6, "Fill one bubble per question completely. Do not fold or stain this sheet.");
-  for (let i = 0; i < ex.n; i++) {
-    const [x0, y] = qPos(i, 0);
-    if (i % 25 === 0) for (let j = 0; j < ex.choices; j++) s += T(qPos(i, j)[0], 74, 3, L[j], "middle", 700);
-    s += T(x0 - 3.5, y + 1, 3, i + 1, "end");
-    for (let j = 0; j < ex.choices; j++) { const [x] = qPos(i, j); s += `<circle cx="${x}" cy="${y}" r="${G.r}" fill="none" stroke="#000" stroke-width=".35"/>`; }
-  }
-  return s + T(100, 273, 2.6, "Exam ID: " + ex.id + "  |  ARK sheet v1", "middle") + "</svg>";
-}
-function drawSheet() { const ex = S.exams.find((x) => x.id === $("shExam").value);
-  $("sheetWrap").innerHTML = ex ? sheetSVG(ex, $("school").value) : "<p class='muted'>Create an examination first.</p>"; $("pg").textContent = `@page{size:${$("paper").value};margin:6mm}`; }
-["shExam", "paper", "school"].forEach((i) => $(i).addEventListener("input", drawSheet));
-$("shPrint").onclick = () => { drawSheet(); print(); };
-
-/* ---------- scanner ---------- */
-let stream, R = null;
-$("camBtn").onclick = async () => { try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 } }, audio: false });
-  $("vid").srcObject = stream; $("vid").hidden = false; $("capBtn").disabled = false; } catch { flash("Camera unavailable. Allow camera access (HTTPS is required) or upload a photo."); } };
-$("capBtn").onclick = () => grab($("vid"), $("vid").videoWidth, $("vid").videoHeight);
-$("file").onchange = (e) => { const f = e.target.files[0]; if (!f) return; const im = new Image(); im.onload = () => grab(im, im.naturalWidth, im.naturalHeight); im.src = URL.createObjectURL(f); e.target.value = ""; };
-function grab(src, w0, h0) {
-  const ex = S.exams.find((x) => x.id === $("scExam").value); if (!ex) return flash("Choose an examination first.");
-  if (!w0) return flash("The camera is not ready yet.");
-  const k = Math.min(1, 1400 / Math.max(w0, h0)), w = Math.round(w0 * k), h = Math.round(h0 * k), cv = $("cv");
-  cv.width = w; cv.height = h; const ctx = cv.getContext("2d", { willReadFrequently: true }); ctx.drawImage(src, 0, 0, w, h);
-  const d = ctx.getImageData(0, 0, w, h).data, g = new Uint8ClampedArray(w * h);
-  for (let i = 0; i < g.length; i++) g[i] = 0.299 * d[4 * i] + 0.587 * d[4 * i + 1] + 0.114 * d[4 * i + 2];
-  cv.hidden = false; const r = scanSheet(g, w, h, ex, ctx);
-  if (r.err) { $("review").hidden = true; return flash(r.err); }
-  R = { ex, answers: r.answers, flags: r.flags }; $("review").hidden = false;
-  const stu = S.students.filter((s) => s.classId === ex.classId); $("scStu").innerHTML = '<option value="">Choose student</option>' + opts(stu, (s) => `${s.number} - ${s.name}`, "No students in this class");
-  drawReview(); if (r.flags.some(Boolean)) flash("Some answers are uncertain (highlighted). Check them against the paper before saving.");
-}
-function scanSheet(g, w, h, ex, ctx) {
-  const hist = new Array(256).fill(0); g.forEach((v) => hist[v]++);
-  let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i];
-  let sB = 0, wB = 0, best = 0, T = 128; for (let i = 0; i < 256; i++) { wB += hist[i]; const wF = g.length - wB; if (!wB) continue; if (!wF) break; sB += i * hist[i];
-    const b = wB * wF * (sB / wB - (sum - sB) / wF) ** 2; if (b > best) { best = b; T = i; } }
-  const pts = [];
-  for (const [cx, cy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
-    const x0 = cx ? Math.floor(w * .6) : 0, x1 = cx ? w : Math.ceil(w * .4), y0 = cy ? Math.floor(h * .6) : 0, y1 = cy ? h : Math.ceil(h * .4);
-    const rw = x1 - x0, seen = new Uint8Array(rw * (y1 - y0)); let pick = null, pd = 1e12;
-    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-      const id = (y - y0) * rw + (x - x0); if (seen[id] || g[y * w + x] >= T) continue;
-      const st = [x, y]; seen[id] = 1; let a = 0, sx = 0, sy = 0, mnx = x, mxx = x, mny = y, mxy = y;
-      while (st.length) { const py = st.pop(), px = st.pop(); a++; sx += px; sy += py; mnx = Math.min(mnx, px); mxx = Math.max(mxx, px); mny = Math.min(mny, py); mxy = Math.max(mxy, py);
-        for (const [nx, ny] of [[px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]]) { if (nx < x0 || nx >= x1 || ny < y0 || ny >= y1) continue;
-          const j = (ny - y0) * rw + (nx - x0); if (!seen[j] && g[ny * w + nx] < T) { seen[j] = 1; st.push(nx, ny); } } }
-      const bw = mxx - mnx + 1, bh = mxy - mny + 1;
-      if (a > 80 && bw < w * .15 && bw / bh > .6 && bw / bh < 1.6 && a / (bw * bh) > .75) { const dd = (sx / a - (cx ? w : 0)) ** 2 + (sy / a - (cy ? h : 0)) ** 2; if (dd < pd) { pd = dd; pick = [sx / a, sy / a]; } }
-    }
-    if (!pick) return { err: "Could not find all 4 corner squares. Keep the whole sheet in view, flat, upright and well lit." };
-    pts.push(pick);
-  }
-  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]), ratio = dist(pts[0], pts[2]) / dist(pts[0], pts[1]);
-  if (ratio < 1.2 || ratio > 1.7) return { err: "The sheet looks rotated or badly angled. Hold it upright and try again." };
-  // homography: sheet units -> image pixels
-  const A = []; G.mk.forEach(([sx, sy], i) => { const [ix, iy] = pts[i];
-    A.push([sx, sy, 1, 0, 0, 0, -ix * sx, -ix * sy, ix], [0, 0, 0, sx, sy, 1, -iy * sx, -iy * sy, iy]); });
-  for (let c = 0; c < 8; c++) { let p = c; for (let r = c + 1; r < 8; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r; [A[c], A[p]] = [A[p], A[c]];
-    for (let r = 0; r < 8; r++) if (r !== c) { const f = A[r][c] / A[c][c]; for (let k = c; k < 9; k++) A[r][k] -= f * A[c][k]; } }
-  const H = A.map((r, i) => r[8] / r[i]), map = (x, y) => { const q = H[6] * x + H[7] * y + 1; return [(H[0] * x + H[1] * y + H[2]) / q, (H[3] * x + H[4] * y + H[5]) / q]; };
-  const sc = dist(pts[0], pts[1]) / 180;
-  const mean = (x, y, r) => { let s = 0, n = 0; for (let yy = Math.floor(y - r); yy <= y + r; yy++) for (let xx = Math.floor(x - r); xx <= x + r; xx++)
-    if (xx >= 0 && yy >= 0 && xx < w && yy < h && (xx - x) ** 2 + (yy - y) ** 2 <= r * r) { s += g[yy * w + xx]; n++; } return n ? s / n : 255; };
-  const black = pts.reduce((s, p) => s + mean(p[0], p[1], 2), 0) / 4;
-  ctx.strokeStyle = "#e11"; ctx.lineWidth = 1; const answers = [], flags = [];
-  for (let i = 0; i < ex.n; i++) {
-    const xy = Array.from({ length: ex.choices }, (_, j) => qPos(i, j)), gaps = xy.slice(0, -1).map(([x, y]) => mean(...map(x + G.pitch / 2, y), 1.1 * sc));
-    const paper = gaps.reduce((a, b) => a + b, 0) / gaps.length; if (paper - black < 40) return { err: "Not enough contrast. Use better, even lighting and a darker pencil or pen." };
-    const fill = xy.map(([x, y]) => { const [px, py] = map(x, y); ctx.beginPath(); ctx.arc(px, py, 1.8 * sc, 0, 7); ctx.stroke();
-      return Math.min(1, Math.max(0, (paper - mean(px, py, 1.8 * sc)) / (paper - black))); });
-    const on = fill.map((v, j) => (v > .5 ? j : -1)).filter((j) => j >= 0);
-    answers.push(on.length === 0 ? "" : on.length > 1 ? "*" : L[on[0]]);
-    flags.push(on.length > 1 || fill.some((v) => v > .25 && v <= .5));
-  }
-  return { answers, flags };
-}
-const score = (ex, a) => { let c = 0, w = 0, b = 0, m = 0; a.forEach((x, i) => { if (x === "") b++; else if (x === "*") m++; else if (x === ex.key[i]) c++; else w++; });
-  const pct = Math.round((c / ex.n) * 1000) / 10; return { correct: c, wrong: w, blank: b, multi: m, total: ex.n, pct, pass: pct >= ex.passing }; };
-function drawReview() {
-  const { ex, answers, flags } = R, ch = L.slice(0, ex.choices).split("");
-  $("grid").innerHTML = answers.map((a, i) => `<div class="${flags[i] ? "bad" : ""}">${i + 1}. <select data-i="${i}"><option value="">blank</option>${ch.map((c) => `<option ${a === c ? "selected" : ""}>${c}</option>`).join("")}<option value="*" ${a === "*" ? "selected" : ""}>multiple</option></select></div>`).join("");
-  sumUp();
-}
-const sumUp = () => { const s = score(R.ex, R.answers); $("sum").innerHTML = `<b>Score ${s.correct}/${s.total} (${s.pct}%) - ${s.pass ? "Passed" : "Failed"}</b> &nbsp; Incorrect ${s.wrong}, blank ${s.blank}, multiple ${s.multi}`; };
-$("grid").onchange = (e) => { const i = e.target.dataset.i; if (i === undefined) return; R.answers[i] = e.target.value; R.flags[i] = false; e.target.parentElement.className = ""; sumUp(); };
-$("scSave").onclick = () => run(async () => {
-  const stu = S.students.find((s) => s.id === $("scStu").value); if (!stu) return flash("Choose the student this sheet belongs to.");
-  const id = `${R.ex.id}_${stu.id}`, ref = doc(db, "scanResults", id), old = await getDoc(ref);
-  if (old.exists() && !confirm(`${stu.name} already has a result for this exam. Replace it?`)) return;
-  $("scSave").disabled = true;
-  try { await setDoc(ref, { ownerUid: user.uid, examId: R.ex.id, studentId: stu.id, studentName: stu.name, studentNumber: stu.number, answers: R.answers,
-    ...score(R.ex, R.answers), reviewedFlags: R.flags.filter(Boolean).length, scannedAt: serverTimestamp() }); flash(`Saved result for ${stu.name}.`, 1);
-    $("review").hidden = true; $("cv").hidden = true; } finally { $("scSave").disabled = false; }
-});
-
-/* ---------- results ---------- */
-async function loadResults() { await run(async () => { const ex = S.exams.find((x) => x.id === $("reExam").value); if (!ex) return;
-  S.results = (await load("scanResults", where("examId", "==", ex.id))).sort((a, b) => b.correct - a.correct);
-  const sc = S.results.map((r) => r.pct), avg = sc.length ? (sc.reduce((a, b) => a + b, 0) / sc.length).toFixed(1) : "-";
-  $("stats").textContent = sc.length ? `Scanned ${sc.length} | Average ${avg}% | Highest ${Math.max(...sc)}% | Lowest ${Math.min(...sc)}% | Passed ${S.results.filter((r) => r.pass).length}` : "No results yet for this exam.";
-  $("reTbl").innerHTML = "<tr><th>Rank</th><th>No.</th><th>Name</th><th>Score</th><th>%</th><th>Status</th><th>Incorrect</th><th>Blank</th></tr>" +
-    S.results.map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r.studentNumber)}</td><td>${esc(r.studentName)}</td><td>${r.correct}/${r.total}</td><td>${r.pct}</td><td>${r.pass ? "Pass" : "Fail"}</td><td>${r.wrong + r.multi}</td><td>${r.blank}</td></tr>`).join("");
-  $("items").innerHTML = ex.key.map((k, i) => `<div>Q${i + 1} (${k}): ${S.results.length ? Math.round((S.results.filter((r) => r.answers[i] === k).length / S.results.length) * 100) + "%" : "-"}</div>`).join(""); }); }
-$("reExam").onchange = loadResults;
-$("csv").onclick = () => { const ex = S.exams.find((x) => x.id === $("reExam").value); if (!ex || !S.results.length) return flash("No results to export.");
-  const q = (v) => `"${String(v).replace(/"/g, '""')}"`, rows = [["Rank", "Student no", "Name", "Correct", "Total", "Percent", "Status"], ...S.results.map((r, i) => [i + 1, r.studentNumber, r.studentName, r.correct, r.total, r.pct, r.pass ? "Pass" : "Fail"])];
-  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + rows.map((r) => r.map(q).join(",")).join("\n")], { type: "text/csv" })); a.download = `${ex.title}-results.csv`; a.click(); };
-refresh();
-</script></body></html>
+<script type="module" src="js/teacher.js"></script>
+</body></html>

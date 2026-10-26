@@ -3,7 +3,7 @@ import {
   getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged,
   sendPasswordResetEmail, updatePassword
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, getDoc, updateDoc, serverTimestamp }
+import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 
@@ -34,6 +34,15 @@ export function friendlyError(e) {
 export const login = (email, password) => signInWithEmailAndPassword(auth, email, password);
 export const logout = async () => { await signOut(auth); location.href = "login.html"; };
 export const resetPassword = (email) => sendPasswordResetEmail(auth, email);
+
+/** A user who is signed out asks the IT Administrator for a password reset. Nothing is emailed until the admin approves it.
+ *  The reply never says whether the email exists, so this cannot be used to discover accounts. */
+export async function requestPasswordReset(email, employeeId) {
+  await addDoc(collection(db, "resetRequests"), {
+    email: email.trim().toLowerCase(), employeeId: (employeeId || "").trim(),
+    status: "pending", createdAt: serverTimestamp(),
+  });
+}
 
 export async function getProfile(uid) {
   const s = await getDoc(doc(db, "users", uid));

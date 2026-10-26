@@ -40,6 +40,22 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Password-reset requests. Anyone (even signed out) may file ONE well-formed pending request;
+    // only the IT admin can read them or mark them handled. Nothing is emailed until the admin acts.
+    match /resetRequests/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['email', 'employeeId', 'status', 'createdAt'])
+        && request.resource.data.email is string
+        && request.resource.data.email.size() > 4 && request.resource.data.email.size() < 150
+        && request.resource.data.employeeId is string && request.resource.data.employeeId.size() < 40
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt == request.time;
+      allow read: if isAdmin();
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'resolvedAt', 'resolvedBy'])
+        && request.resource.data.status in ['sent', 'dismissed'];
+      allow delete: if false;
+    }
+
     match /systemSettings/{id} {
       allow read: if liveAccount();
       allow write: if isAdmin();

@@ -37,7 +37,7 @@ function setSync() {
 addEventListener("online", setSync); addEventListener("offline", setSync); setSync();
 
 /* ---------- navigation ---------- */
-const titles = { dashboard: "Dashboard", teachers: "Teachers", activity: "Activity log" };
+const titles = { dashboard: "Dashboard", teachers: "Teachers", requests: "Reset requests", activity: "Activity log" };
 function nav() {
   const v = titles[location.hash.slice(1)] ? location.hash.slice(1) : "dashboard";
   document.querySelectorAll("[data-view]").forEach((s) => (s.hidden = s.dataset.view !== v));
@@ -69,6 +69,56 @@ function renderTeachers() {
 }
 $("q").addEventListener("input", renderTeachers);
 
+/* ---------- password reset requests ---------- */
+let requests = [];
+async function loadRequests() {
+  const snap = await getDocs(query(collection(db, "resetRequests"), orderBy("createdAt", "desc"), limit(100)));
+  requests = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1)); // pending first, newest first within
+  renderRequests();
+}
+function matchOf(r) {
+  const t = teachers.find((x) => String(x.email).toLowerCase() === String(r.email).toLowerCase());
+  if (!t) return { state: "none" };
+  if (r.employeeId && r.employeeId.toLowerCase() !== String(t.employeeId).toLowerCase()) return { state: "mismatch", t };
+  return { state: "ok", t };
+}
+function renderRequests() {
+  const pending = requests.filter((r) => r.status === "pending").length;
+  $("reqCount").textContent = pending; $("reqCount").hidden = !pending; $("s-req").textContent = pending;
+  const badge = (m) => m.state === "ok" ? `<span class="badge active">Matches ${esc(m.t.displayName)}</span>`
+    : m.state === "mismatch" ? `<span class="badge warn">Employee ID does not match ${esc(m.t.displayName)}</span>`
+    : `<span class="badge suspended">No account with this email</span>`;
+  $("reqTbl").innerHTML = `<tr><th>Requested</th><th>Email</th><th>Employee ID given</th><th>Check</th><th>Status</th><th></th></tr>` +
+    (requests.length ? requests.map((r) => { const m = matchOf(r), open = r.status === "pending"; return `<tr>
+      <td>${fmt(r.createdAt)}</td><td>${esc(r.email)}</td><td>${esc(r.employeeId || "-")}</td><td>${badge(m)}</td>
+      <td><span class="badge ${open ? "warn" : "active"}">${esc(r.status)}</span></td>
+      <td class="actions">${open ? `<button class="btn small primary" data-act="send" data-id="${esc(r.id)}" ${m.t ? "" : "disabled"}>Send reset link</button>
+        <button class="btn small" data-act="dismiss" data-id="${esc(r.id)}">Dismiss</button>` : ""}</td></tr>`; }).join("")
+      : `<tr><td colspan="6">No requests yet.</td></tr>`);
+}
+$("reqTbl").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-act]"); if (!b) return;
+  const r = requests.find((x) => x.id === b.dataset.id); if (!r) return;
+  const m = matchOf(r);
+  try {
+    if (b.dataset.act === "send") {
+      if (!m.t) return;
+      const warn = m.state === "mismatch" ? "The employee ID in the request does NOT match this account. Verify the person first.\n\n" : "";
+      if (!ask(`${warn}Email a password reset link to ${m.t.email} (${m.t.displayName})?`)) return;
+      await resetPassword(m.t.email);
+      await updateDoc(doc(db, "resetRequests", r.id), { status: "sent", resolvedAt: serverTimestamp(), resolvedBy: user.uid });
+      await logAudit("teacher.reset_link_sent", m.t.uid, { email: m.t.email, via: "request" });
+      flash(`Reset link sent to ${m.t.email}.`, true);
+    } else {
+      if (!ask(`Dismiss the request from ${r.email}?`)) return;
+      await updateDoc(doc(db, "resetRequests", r.id), { status: "dismissed", resolvedAt: serverTimestamp(), resolvedBy: user.uid });
+      await logAudit("reset.request_dismissed", m.t?.uid || "", { email: r.email });
+    }
+    await refresh();
+  } catch (err) { flash(friendlyError(err)); }
+});
+
 async function loadAudit() {
   const snap = await getDocs(query(collection(db, "auditLogs"), orderBy("createdAt", "desc"), limit(50)));
   const rows = snap.docs.map((d) => d.data());
@@ -86,7 +136,7 @@ async function loadCounts() {
   } catch (err) { flash("Could not load counts: " + friendlyError(err)); }
 }
 async function refresh() {
-  try { await Promise.all([loadTeachers(), loadAudit(), loadCounts()]); }
+  try { await loadTeachers(); await Promise.all([loadRequests(), loadAudit(), loadCounts()]); }
   catch (err) { flash("Could not load data: " + friendlyError(err)); }
 }
 

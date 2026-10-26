@@ -8,6 +8,7 @@
     <nav>
       <a href="#dashboard" data-v="dashboard">Dashboard</a>
       <a href="#teachers" data-v="teachers">Teachers</a>
+      <a href="#requests" data-v="requests">Reset requests <span class="count" id="reqCount" hidden>0</span></a>
       <a href="#activity" data-v="activity">Activity log</a>
     </nav>
     <div class="who"><span id="who"></span><button class="btn" id="out">Sign out</button></div>
@@ -22,6 +23,7 @@
       <div class="cards">
         <div class="stat"><b id="s-teachers">-</b><span>Total teachers</span></div>
         <div class="stat"><b id="s-active">-</b><span>Active accounts</span></div>
+        <div class="stat warn"><b id="s-req">-</b><span>Pending reset requests</span></div>
         <div class="stat"><b id="s-exams">-</b><span>Total examinations</span></div>
         <div class="stat"><b id="s-scans">-</b><span>Scanned answer sheets</span></div>
       </div>
@@ -42,6 +44,14 @@
       <div class="panel">
         <div class="row"><label>Search<input id="q" placeholder="Name, email or employee ID"></label></div>
         <div class="tablewrap"><table id="teachers"></table></div>
+      </div>
+    </section>
+
+    <section data-view="requests" hidden>
+      <div class="panel">
+        <h2>Password reset requests</h2>
+        <p class="muted">Teachers ask for a reset from the sign-in page. Check the match, then send the reset link to the email on the account. The link is sent only to the registered address, never to whatever was typed in the request.</p>
+        <div class="tablewrap"><table id="reqTbl"></table></div>
       </div>
     </section>
 
