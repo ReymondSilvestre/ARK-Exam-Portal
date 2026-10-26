@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function profilePath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function hasProfile() { return signedIn() && exists(profilePath()); }
+    function me() { return get(profilePath()).data; }
+    function liveAccount() { return hasProfile() && me().status == 'active' && me().mustChangePassword != true; }
+    function isAdmin()   { return liveAccount() && me().role == 'admin'; }
+    function isTeacher() { return liveAccount() && me().role == 'teacher'; }
+    function owns() { return resource.data.ownerUid == request.auth.uid; }
+
+    match /users/{uid} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+
+      // Only an admin may create profiles, and only teacher profiles (never another admin).
+      allow create: if isAdmin()
+        && request.resource.data.role == 'teacher'
+        && request.resource.data.uid == uid
+        && request.resource.data.status == 'active'
+        && request.resource.data.mustChangePassword == true;
+
+      // Admin: change a teacher's status only. User: clear their own first-login flag only.
+      allow update: if
+        (isAdmin() && resource.data.role == 'teacher'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+          && request.resource.data.status in ['active', 'suspended'])
+        ||
+        (signedIn() && request.auth.uid == uid && resource.data.mustChangePassword == true
+          && request.resource.data.mustChangePassword == false
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mustChangePassword', 'passwordChangedAt']));
+
+      allow delete: if false;
+    }
+
+    match /auditLogs/{id} {
+      allow read: if isAdmin();
+      allow create: if isAdmin() && request.resource.data.actorUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /systemSettings/{id} {
+      allow read: if liveAccount();
+      allow write: if isAdmin();
+    }
+
+    // Teacher-owned data (used from Phase 2 onward).
+    match /{coll}/{id} {
+      allow read:   if coll in ['classes','students','examinations','answerKeys','answerSheets','scanResults']
+                       && (isAdmin() || (isTeacher() && owns()));
+      allow create: if coll in ['classes','students','examinations','answerKeys','answerSheets','scanResults']
+                       && isTeacher() && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if coll in ['classes','students','examinations','answerKeys','answerSheets','scanResults']
+                       && isTeacher() && owns()
+                       && request.resource.data.ownerUid == resource.data.ownerUid;
+      allow delete: if coll in ['classes','students','examinations','answerKeys','answerSheets','scanResults']
+                       && isTeacher() && owns();
+    }
+  }
+}

@@ -1,0 +1,36 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in - ARK Exam Scanner</title><link rel="stylesheet" href="css/style.css"></head>
+<body class="auth-page">
+<main class="auth-card">
+  <div class="brand"><span class="mark">ARK</span><span>Exam Scanner</span></div>
+  <h1>Sign in</h1>
+  <p class="muted">Use the email and password your IT administrator gave you.</p>
+  <div id="msg" class="notice" hidden role="alert"></div>
+  <form id="f" novalidate>
+    <label>Email<input id="email" type="email" autocomplete="username" required></label>
+    <label>Password<input id="pw" type="password" autocomplete="current-password" required></label>
+    <button class="btn primary block" id="go">Sign in</button>
+  </form>
+  <button class="link" id="forgot" type="button">Email me a password reset link</button>
+</main>
+<script type="module">
+import { login, resetPassword, friendlyError, destinationFor, logout } from "./js/auth.js";
+const $ = (id) => document.getElementById(id), msg = $("msg");
+const show = (t, ok) => { msg.textContent = t; msg.hidden = false; msg.className = "notice " + (ok ? "ok" : "err"); };
+if (new URLSearchParams(location.search).has("denied")) show("Your account does not have access to that page.");
+
+$("f").addEventListener("submit", async (e) => {
+  e.preventDefault(); msg.hidden = true; $("go").disabled = true;
+  let c;
+  try { c = await login($("email").value.trim(), $("pw").value); } catch (err) { show(friendlyError(err)); $("go").disabled = false; return; }
+  try { location.href = await destinationFor(c.user); }
+  catch (err) { await import("./js/auth.js").then(m => m.auth.signOut()); show(err.message); $("go").disabled = false; }
+});
+$("forgot").addEventListener("click", async () => {
+  const email = $("email").value.trim();
+  if (!email) return show("Enter your email above first.");
+  try { await resetPassword(email); } catch (e) { /* do not reveal whether the email exists */ }
+  show("If that email is registered, a reset link is on its way.", true);
+});
+</script></body></html>

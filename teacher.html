@@ -1,0 +1,15 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Teacher - ARK Exam Scanner</title><link rel="stylesheet" href="css/style.css"></head>
+<body class="auth-page"><main class="auth-card">
+  <div class="brand"><span class="mark">ARK</span><span>Exam Scanner</span></div>
+  <h1 id="hello">Welcome</h1>
+  <p class="muted">Your account works. Classes, students and examinations arrive in Phase 2.</p>
+  <button class="btn" id="out">Sign out</button>
+</main>
+<script type="module">
+import { requireRole, logout } from "./js/auth.js";
+const { user } = await requireRole(["teacher"]);
+document.getElementById("hello").textContent = "Welcome, " + (user.displayName || user.email);
+document.getElementById("out").onclick = logout;
+</script></body></html>
