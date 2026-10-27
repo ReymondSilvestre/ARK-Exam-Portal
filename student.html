@@ -22,8 +22,11 @@
 <section id="room" class="panel" hidden>
 <div class="roomhead"><div><h2 id="rmTitle" style="margin:0"></h2><span class="muted fine" id="rmMeta"></span></div><span class="timer" id="rmTimer" hidden>00:00</span></div>
 <div id="rmInst" class="notice" hidden style="background:#f4f7ff;border-color:#a9b9e8;color:#1a1a1a"></div>
-<p id="rmLinkP" hidden><a id="rmLink" target="_blank" rel="noopener">Open the exam paper</a> (opens in a new tab, then come back here to choose your answers)</p>
-<div id="rmQs"></div>
+<div class="split" id="rmSplit" data-view="paper">
+<div class="mobtabs"><button type="button" class="btn on" data-v="paper">Exam paper</button><button type="button" class="btn" data-v="sheet">Answer sheet</button></div>
+<div class="pane" id="rmPaperPane"><h3>Exam paper</h3><div id="rmPaper"></div></div>
+<div class="pane" id="rmSheetPane"><h3>Answer sheet</h3><div id="rmQs"></div></div>
+</div>
 <div class="row" style="margin-top:1rem"><button class="btn primary" id="rmSubmit">Submit answers</button><button class="btn" id="rmLeave">Save and leave</button><span class="muted" id="rmCount"></span></div>
 </section>
 <section id="done" class="panel" hidden><h2>Submitted</h2><div id="doneBody"></div><div class="row" style="margin-top:1rem"><button class="btn primary" id="doneBack">Back to my exams</button></div></section>

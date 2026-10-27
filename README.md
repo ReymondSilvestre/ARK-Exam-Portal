@@ -14,6 +14,13 @@ firestore.rules firebase.json firestore.indexes.json
 - **Online exams.** Examinations > tick *Students answer this exam online*. Type each question (and the choices for multiple choice) or paste a link to your exam paper. Set a time limit if you want, then *Open* it. Students see it under **Online exams**, answer, submit once, and get the score at once. Results land in the normal Results page (ranking, Excel, item analysis work as before). Identification answers that match your accepted answers (separate several with `|`) are marked correct automatically when you open Results; other identification answers and essays wait for your check (*Check* button shows what the student wrote). *Retake* on a result lets a student start over. *Close* stops new submissions.
 - **Answer sheet**: the footer line (title / Exam ID / "ARK sheet v3") is removed.
 
+### Examination page (teacher)
+- Top buttons: **My exams**, **+ Create exam**, **Answer key**, **Answer sheets**.
+- **My exams**: one card per exam with a green switch to open or close it for students, plus Edit, Answer key, Answer sheet and Delete.
+- **+ Create exam** has 3 steps: (1) details, (2) how students take it: *Type the questions*, *Use an exam paper link*, or *Printed only*, (3) questions and key. For typed multiple choice, write each choice and click its letter to mark the correct one. *+ Add question* and *Remove this question* change the number of items.
+- **Answer key**: pick an exam, see its key, print it.
+- **Student room**: the exam paper (typed questions, or your link embedded) sits on the left and the answer sheet on the right. On a phone the two are switched with tabs.
+
 ### Deploy for v5 (no Cloud Function needed)
 1. Replace the files, keep your `js/firebase-config.js`.
 2. Firestore > Rules: paste `firestore.rules` > Publish. That is all.

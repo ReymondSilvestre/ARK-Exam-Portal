@@ -74,7 +74,7 @@ function render() {
 }
 $("rTerm").onchange = $("mTerm").onchange = render;
 const showTab = (t) => {
-  $("room").hidden = true; $("done").hidden = true; $("tabs").hidden = false;
+  $("room").hidden = true; $("done").hidden = true; $("tabs").hidden = false; wide(false);
   document.querySelectorAll("[data-s]").forEach((s) => (s.hidden = s.dataset.s !== t));
   document.querySelectorAll("#tabs button").forEach((x) => x.classList.toggle("on", x.dataset.t === t));
 };
@@ -117,47 +117,81 @@ const lsGet = (k) => { try { return localStorage.getItem(k); } catch { return nu
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
 const lsDel = (k) => { try { localStorage.removeItem(k); } catch { /* private mode */ } };
 
-function qHTML(it, i, p) {
-  const text = esc(it.q) || (p.link ? "Answer from the exam paper" : "");
-  const head = `<div class="qh"><b>${i + 1}.</b><span class="qt">${text}</span><span class="pt">${it.pts} pt${it.pts === 1 ? "" : "s"}</span></div>`;
-  let body;
-  if (it.type === "mc") body = "ABCDE".slice(0, +p.choices || 5).split("").map((L, j) => `<label class="opt"><input type="radio" name="q${i}" value="${L}"><b>${L}.</b> <span>${esc((it.opts || [])[j] || "")}</span></label>`).join("");
-  else if (it.type === "tf") body = ["T", "F"].map((v) => `<label class="opt"><input type="radio" name="q${i}" value="${v}"><b>${v === "T" ? "True" : "False"}</b></label>`).join("");
-  else if (it.type === "ident") body = `<input type="text" data-i="${i}" maxlength="300" autocomplete="off" placeholder="Type your answer" aria-label="Answer ${i + 1}">`;
-  else body = `<textarea data-i="${i}" rows="5" maxlength="4000" placeholder="Write your answer" aria-label="Answer ${i + 1}"></textarea>`;
-  return `<div class="qa" data-q="${i}">${head}${body}</div>`;
+/** Google Drive / Docs / YouTube links are turned into their embeddable "preview" form so the paper can sit beside the answer sheet. */
+function embedUrl(u) {
+  u = safeUrl(u); if (!u) return "";
+  let m = /drive\.google\.com\/file\/d\/([\w-]+)/.exec(u) || /drive\.google\.com\/open\?id=([\w-]+)/.exec(u);
+  if (m) return `https://drive.google.com/file/d/${m[1]}/preview`;
+  m = /docs\.google\.com\/(document|presentation|spreadsheets)\/d\/([\w-]+)/.exec(u);
+  if (m) return `https://docs.google.com/${m[1]}/d/${m[2]}/preview`;
+  m = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]+)/.exec(u);
+  if (m) return `https://www.youtube.com/embed/${m[1]}`;
+  return u;
+}
+const pts = (n) => `${n} pt${n === 1 ? "" : "s"}`;
+/** Left side: the exam paper (the teacher's link, or the typed questions with their choices). */
+function paperHTML(p) {
+  const link = safeUrl(p.link);
+  if (link) return `<iframe class="paperframe" src="${esc(embedUrl(link))}" title="Exam paper" referrerpolicy="no-referrer" allow="fullscreen"></iframe>
+    <p class="fine muted">Paper not showing? <a href="${esc(link)}" target="_blank" rel="noopener">Open it in a new tab</a>, then come back and choose your answers on the answer sheet.</p>`;
+  return p.items.map((it, i) => {
+    const L = "ABCDE".slice(0, +p.choices || 5).split("");
+    const opts = it.type === "mc" ? L.map((c, j) => `<div class="po" data-pick="${i}:${c}"><b>${c}.</b> <span>${esc((it.opts || [])[j] || "")}</span></div>`).join("")
+      : it.type === "tf" ? `<div class="po" data-pick="${i}:T"><b>True</b></div><div class="po" data-pick="${i}:F"><b>False</b></div>` : "";
+    return `<div class="pq"><div class="qh"><b>${i + 1}.</b><span class="qt">${esc(it.q)}</span><span class="pt">${pts(it.pts)}</span></div>${opts}</div>`;
+  }).join("");
+}
+/** Right side: the answer sheet. Bubbles for multiple choice and true/false, a box for identification and essay. */
+function sheetHTML(p) {
+  const L = "ABCDE".slice(0, +p.choices || 5).split("");
+  return p.items.map((it, i) => {
+    const bub = (v, t) => `<label class="bub"><input type="radio" name="q${i}" value="${v}" aria-label="Number ${i + 1}, ${t}"><span>${t}</span></label>`;
+    const ctl = it.type === "mc" ? `<div class="bubbles">${L.map((c) => bub(c, c)).join("")}</div>`
+      : it.type === "tf" ? `<div class="bubbles">${bub("T", "True")}${bub("F", "False")}</div>`
+      : it.type === "ident" ? `<input type="text" data-i="${i}" maxlength="300" autocomplete="off" placeholder="Type your answer" aria-label="Answer ${i + 1}">`
+      : `<textarea data-i="${i}" rows="4" maxlength="4000" placeholder="Write your answer" aria-label="Answer ${i + 1}"></textarea>`;
+    return `<div class="arow ${it.type === "essay" ? "tall" : ""}" data-q="${i}"><b class="an">${i + 1}</b>${ctl}</div>`;
+  }).join("");
 }
 function count() {
   const n = A.filter((a) => String(a).trim()).length;
   $("rmCount").textContent = `${n} of ${A.length} answered`;
-  document.querySelectorAll("#rmQs .qa").forEach((d) => d.classList.toggle("answered", !!String(A[+d.dataset.q]).trim()));
+  document.querySelectorAll("#rmQs .arow").forEach((d) => d.classList.toggle("answered", !!String(A[+d.dataset.q]).trim()));
+  document.querySelectorAll("#rmPaper .po").forEach((o) => { const [i, c] = o.dataset.pick.split(":"); o.classList.toggle("sel", A[+i] === c); });
 }
 function tick() {
   const left = Math.max(0, Math.round((endAt - Date.now()) / 1000)), m = Math.floor(left / 60), s = left % 60;
   $("rmTimer").textContent = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`; $("rmTimer").classList.toggle("low", left <= 60);
   if (left === 0) { clearInterval(timer); flash("Time is up. Submitting your answers...", true); submitRoom(true); }
 }
+const setView = (v) => { $("rmSplit").dataset.view = v; $("rmSplit").querySelectorAll(".mobtabs .btn").forEach((b) => b.classList.toggle("on", b.dataset.v === v)); };
+$("rmSplit").querySelector(".mobtabs").onclick = (e) => { const b = e.target.closest("button"); if (b) setView(b.dataset.v); };
+const wide = (on) => { document.querySelector(".wrap").classList.toggle("wide", on); $("name").closest(".panel").hidden = on; }; // more room for the paper while answering
 function openRoom(p, startedMs) {
   P = p; busy = false; A = p.items.map(() => "");
   try { const d = JSON.parse(lsGet(draftKey()) || "[]"); if (Array.isArray(d)) d.forEach((v, i) => { if (i < A.length && typeof v === "string") A[i] = v; }); } catch { /* ignore a damaged draft */ }
   $("rmTitle").textContent = p.title;
   $("rmMeta").textContent = [p.subject, p.teacherName, `${p.n} items`, `${p.totalPts} points`].filter(Boolean).join(" | ");
   $("rmInst").hidden = !p.instructions; $("rmInst").textContent = p.instructions || "";
-  const link = safeUrl(p.link); $("rmLinkP").hidden = !link; if (link) $("rmLink").href = link;
-  $("rmQs").innerHTML = p.items.map((it, i) => qHTML(it, i, p)).join("");
+  $("rmPaper").innerHTML = paperHTML(p); $("rmQs").innerHTML = sheetHTML(p); setView("paper");
   p.items.forEach((it, i) => { // put saved answers back
     const v = A[i]; if (!v) return;
     if (it.type === "mc" || it.type === "tf") { const r = $("rmQs").querySelector(`input[name="q${i}"][value="${v}"]`); if (r) r.checked = true; }
     else { const f = $("rmQs").querySelector(`[data-i="${i}"]`); if (f) f.value = v; }
   });
-  document.querySelectorAll("[data-s]").forEach((s) => (s.hidden = true)); $("tabs").hidden = true; $("done").hidden = true; $("room").hidden = false;
+  document.querySelectorAll("[data-s]").forEach((s) => (s.hidden = true)); $("tabs").hidden = true; $("done").hidden = true; $("room").hidden = false; wide(true);
   $("rmSubmit").disabled = false; count(); scrollTo({ top: 0 });
   clearInterval(timer);
   if (p.timeLimit > 0) { endAt = startedMs + p.timeLimit * 60000; $("rmTimer").hidden = false; tick(); timer = setInterval(tick, 1000); } else $("rmTimer").hidden = true;
 }
 $("rmQs").addEventListener("input", (e) => {
-  const t = e.target, q = t.closest(".qa"); if (!q || !P) return; const i = +q.dataset.q;
+  const t = e.target, q = t.closest(".arow"); if (!q || !P) return; const i = +q.dataset.q;
   A[i] = t.type === "radio" ? (t.checked ? t.value : A[i]) : t.value; lsSet(draftKey(), JSON.stringify(A)); count();
+});
+// clicking a choice on the paper selects it on the answer sheet
+$("rmPaper").addEventListener("click", (e) => {
+  const o = e.target.closest("[data-pick]"); if (!o) return; const [i, c] = o.dataset.pick.split(":");
+  const r = $("rmQs").querySelector(`input[name="q${i}"][value="${c}"]`); if (r) { r.checked = true; r.dispatchEvent(new Event("input", { bubbles: true })); }
 });
 async function begin(p) {
   if (subs.has(p.id)) { P = p; return finish(p, subs.get(p.id)); } // answers already locked: only the score is missing
@@ -224,7 +258,7 @@ async function submitRoom(auto) {
 $("rmSubmit").onclick = () => submitRoom(false);
 
 function showDone(r) {
-  $("room").hidden = true; $("tabs").hidden = true; document.querySelectorAll("[data-s]").forEach((s) => (s.hidden = true)); $("done").hidden = false;
+  $("room").hidden = true; wide(false); $("tabs").hidden = true; document.querySelectorAll("[data-s]").forEach((s) => (s.hidden = true)); $("done").hidden = false;
   const score = `<p style="font-size:1.5rem;margin:.2rem 0"><b>${r.points} / ${r.maxPoints}</b> (${r.pct}%)`;
   $("doneBody").innerHTML = (r.final ? `${score} <span class="badge ${r.pass ? "active" : "suspended"}">${r.pass ? "Passed" : "Failed"}</span></p>`
     : `${score} so far</p><p class="muted">${r.pending} item${r.pending === 1 ? "" : "s"} still to be checked by your teacher. Your final score will appear under <b>My exam results</b>.</p>`)

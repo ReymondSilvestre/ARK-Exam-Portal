@@ -144,7 +144,7 @@ code.cc{font-weight:700;letter-spacing:.12em;background:#f3f3f4;border:1px solid
 .side .muted{overflow-wrap:anywhere}
 
 /* ---------- v5: filter icon, online exams ---------- */
-textarea{display:block;width:100%;margin-top:.3rem;padding:.65rem .75rem;border:1px solid #8a8a8e;border-radius:6px;font:inherit;background:#fff;resize:vertical}
+textarea{display:block;width:100%;margin-top:.3rem;padding:.65rem .75rem;border:1px solid #8a8a8e;border-radius:6px;font:inherit;background:#fff;resize:vertical;font-weight:400}
 label.chk{display:flex;gap:.5rem;align-items:flex-start;font-weight:600}
 label.chk input{width:auto;margin:.25rem 0 0}
 .listbar{display:flex;justify-content:space-between;align-items:center;gap:.6rem;margin:1rem 0 .4rem}
@@ -176,3 +176,57 @@ label.chk input{width:auto;margin:.25rem 0 0}
 label.opt{display:flex;gap:.6rem;align-items:center;font-weight:400;padding:.55rem .7rem;border:1px solid var(--line);border-radius:6px;margin:.3rem 0;cursor:pointer}
 label.opt input{width:auto;margin:0}
 label.opt:has(input:checked){border-color:var(--ink);background:#f1f1f3;font-weight:600}
+
+/* ---------- v5.1: examination page ---------- */
+label.inl{display:flex;align-items:center;gap:.5rem;margin:0;font-weight:600} label.inl select{margin:0;width:auto}
+h3.step{display:flex;align-items:center;gap:.6rem;margin:1.4rem 0 .6rem;padding-top:.8rem;border-top:1px solid var(--line)}
+h3.step b{background:var(--red);color:#fff;border-radius:50%;width:1.7rem;height:1.7rem;display:inline-grid;place-items:center;font-size:.85rem}
+.modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(14rem,1fr));gap:.6rem}
+.mode{text-align:left;font:inherit;padding:.8rem;border:2px solid var(--line);border-radius:8px;background:#fff;cursor:pointer;display:flex;flex-direction:column;gap:.25rem}
+.mode span{color:var(--muted);font-size:.85rem}
+.mode:hover{border-color:#999} .mode.on{border-color:var(--red);background:#fff5f5}
+details.bulk{border:1px dashed var(--line);border-radius:6px;padding:.5rem .8rem;margin-bottom:.6rem} details.bulk>summary{cursor:pointer;font-weight:600}
+.savebar{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--line);padding:.7rem 0;margin-top:1rem;display:flex;gap:.6rem;z-index:5}
+.excards{display:grid;grid-template-columns:repeat(auto-fill,minmax(20rem,1fr));gap:.8rem}
+.termhead{grid-column:1/-1;font-weight:700;background:#f0f0f1;padding:.4rem .7rem;border-radius:6px}
+.excard{border:1px solid var(--line);border-radius:10px;padding:.9rem;background:#fff;display:flex;flex-direction:column;gap:.65rem}
+.excard .top2{display:flex;justify-content:space-between;gap:.5rem;align-items:flex-start}
+.excard h4{margin:0;font-size:1.05rem;overflow-wrap:anywhere}
+.meta{display:flex;flex-wrap:wrap;gap:.3rem}
+.cm{border:1px solid var(--line);border-radius:99px;padding:.05rem .55rem;font-size:.8rem;color:var(--muted);background:#fafafa}
+.excard .acts{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:auto}
+.switch{display:inline-flex;align-items:center;gap:.6rem;font:inherit;font-weight:600;background:none;border:0;cursor:pointer;padding:.2rem 0;color:var(--ink)}
+.switch .trk{width:3rem;height:1.6rem;border-radius:99px;background:#9a9aa0;position:relative;transition:background .15s;flex:none}
+.switch .trk::after{content:"";position:absolute;top:.2rem;left:.2rem;width:1.2rem;height:1.2rem;border-radius:50%;background:#fff;transition:transform .15s}
+.switch[aria-checked=true] .trk{background:var(--ok)} .switch[aria-checked=true] .trk::after{transform:translateX(1.4rem)}
+.kvt td,.kvt th{white-space:normal} .kvt td.k{font-weight:700;color:var(--ok)}
+.ibody .optin .chip{min-width:2.4rem;padding:.35rem .5rem} .ibody .optin input{flex:1}
+.qs{color:var(--ink)}
+@media print{.savebar{display:none}}
+
+/* ---------- student exam room: exam paper beside the answer sheet ---------- */
+.wrap.wide{max-width:98rem}
+.split{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:1rem;align-items:start}
+.pane{border:1px solid var(--line);border-radius:8px;padding:.8rem;background:#fff;min-width:0;max-height:calc(100vh - 9rem);overflow:auto}
+.pane h3{margin:0 0 .6rem;position:sticky;top:0;background:#fff;padding-bottom:.3rem}
+.paperframe{display:block;width:100%;height:calc(100vh - 15rem);min-height:22rem;border:1px solid var(--line);border-radius:6px}
+.mobtabs{display:none;gap:.4rem;grid-column:1/-1} .mobtabs .btn{flex:1} .mobtabs .btn.on{background:var(--ink);color:#fff}
+.pq{padding:.6rem 0;border-bottom:1px dashed var(--line)}
+.po{padding:.4rem .65rem;border:1px solid var(--line);border-radius:6px;margin:.3rem 0;cursor:pointer}
+.po:hover{background:#f7f7f8} .po.sel{border-color:var(--ink);background:#f1f1f3}
+.arow{display:flex;gap:.7rem;align-items:center;padding:.5rem .2rem;border-bottom:1px dashed var(--line)}
+.arow.tall{align-items:flex-start}
+.arow .an{background:var(--ink);color:#fff;min-width:2.2rem;text-align:center;border-radius:4px;padding:.1rem .3rem;flex:none}
+.arow.answered .an{background:var(--ok)}
+.arow input[type=text],.arow textarea{margin:0;flex:1}
+.bubbles{display:flex;gap:.45rem;flex-wrap:wrap}
+.bub{display:inline-block;position:relative;margin:0;cursor:pointer}
+.bub input{position:absolute;opacity:0;width:1px;height:1px;margin:0;padding:0;border:0}
+.bub span{display:inline-grid;place-items:center;min-width:2.3rem;height:2.3rem;padding:0 .5rem;border:2px solid var(--ink);border-radius:99px;font-weight:700;background:#fff}
+.bub input:checked+span{background:var(--ink);color:#fff}
+.bub input:focus-visible+span{outline:3px solid var(--red);outline-offset:2px}
+@media (max-width:900px){
+  .split{grid-template-columns:1fr} .mobtabs{display:flex}
+  .split[data-view=paper] #rmSheetPane{display:none} .split[data-view=sheet] #rmPaperPane{display:none}
+  .pane{max-height:none} .paperframe{height:70vh}
+}

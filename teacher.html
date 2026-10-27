@@ -42,7 +42,20 @@
 <div class="tablewrap"><table id="stTbl"></table></div></div></section>
 
 <!-- EXAMINATIONS -->
-<section data-s="exams" hidden><div class="panel"><h2 id="exHead">New examination</h2>
+<section data-s="exams" hidden>
+<div class="tabs seg noprint" id="exNav">
+<button class="btn on" data-exv="list" type="button">My exams</button><button class="btn" data-exv="create" type="button">+ Create exam</button>
+<button class="btn" data-exv="key" type="button">Answer key</button><button class="btn" id="exGoSheet" type="button">Answer sheets &rarr;</button></div>
+
+<!-- view: my exams -->
+<div data-ev="list"><div class="panel">
+<div class="listbar noprint"><h2 style="margin:0">My exams</h2><label class="inl">Show<select id="exFilter"></select></label></div>
+<div id="exList" class="excards"></div></div></div>
+
+<!-- view: create / edit -->
+<div data-ev="create" hidden><div class="panel">
+<h2 id="exHead">New examination</h2>
+<h3 class="step"><b>1</b> Exam details</h3>
 <div class="row"><label>Title<input id="exTitle"></label><label>Subject<input id="exSub"></label>
 <label>Term / quarter<select id="exTerm"></select></label>
 <label>Section<select id="exClass"></select></label><label>Date<input type="date" id="exDate"></label></div>
@@ -50,30 +63,41 @@
 <label>Multiple choice letters<select id="exCh"><option value="5">A-E</option><option value="4">A-D</option></select></label>
 <label>Passing %<input type="number" id="exPass" value="75" min="1" max="100"></label></div>
 
-<div class="onlinebox">
-<label class="chk"><input type="checkbox" id="exOnline"><span>Students answer this exam online, on their own account<small>The system scores it automatically with your answer key. You can still print answer sheets for the same exam.</small></span></label>
-<div id="exOnlineBox" hidden>
+<h3 class="step"><b>2</b> How will students take it?</h3>
+<input type="checkbox" id="exOnline" hidden>
+<div class="modes" id="exMode">
+<button type="button" class="mode" data-mode="manual"><b>Type the questions</b><span>Write each question and its choices here. Students read them beside their answer sheet and answer online.</span></button>
+<button type="button" class="mode" data-mode="link"><b>Use an exam paper link</b><span>Paste a link to your exam file (Google Drive, PDF). It shows beside the student's answer sheet.</span></button>
+<button type="button" class="mode" data-mode="paper"><b>Printed only</b><span>Print answer sheets and scan them with the camera. Not taken online.</span></button></div>
+<div class="onlinebox" id="exOnlineBox" hidden>
 <div class="row"><label class="narrow">Time limit (minutes)<input type="number" id="exTime" min="0" max="600" value="0"><small>0 = no limit</small></label>
-<label>Exam paper link (optional)<input id="exLink" type="url" placeholder="https://"><small>Google Drive / PDF link. If you add one, you do not have to type every question below: students read the paper and just choose their answers.</small></label></div>
+<label id="exLinkRow">Exam paper link<input id="exLink" type="url" placeholder="https://"><small>Google Drive: set sharing to &quot;Anyone with the link can view&quot;.</small></label></div>
 <label style="margin-top:.6rem">Instructions for students (optional)<textarea id="exInst" rows="2" maxlength="1000"></textarea></label>
 <label class="chk"><input type="checkbox" id="exShow" checked><span>After submitting, show the student which items were wrong and the correct answer</span></label>
-<label class="chk" style="margin-bottom:0"><input type="checkbox" id="exOpen"><span>Open it for students as soon as I save (you can open or close it later from the list)</span></label>
-</div></div>
+<label class="chk" style="margin-bottom:0"><input type="checkbox" id="exOpen"><span>Open it for students as soon as I save (you can switch it open or closed later from My exams)</span></label></div>
 
-<h3>Item types and answer key</h3>
-<small>Tap a number to open it. Multiple choice and True/False are scanned automatically. Identification and essay are checked by you after scanning.</small>
+<h3 class="step"><b>3</b> Questions and answer key</h3>
+<p class="muted fine" id="exStepHint"></p>
+<details class="bulk noprint"><summary>Quick tools</summary>
 <div class="toolbar" style="margin-top:.6rem">
 <label>Set items from<input type="number" id="exFrom" min="1" placeholder="1"></label>
 <label>to<input type="number" id="exTo" min="1" placeholder="10"></label>
 <label class="grow">as<select id="exBulkType"></select></label>
-<button class="btn" id="exBulk" type="button">Apply to range</button></div>
+<button class="btn" id="exBulk" type="button">Apply to range</button></div></details>
 <div class="toolbar"><button class="btn small" id="exOpenAll" type="button">Expand all</button>
 <button class="btn small" id="exCloseAll" type="button">Collapse all</button>
-<label style="flex:0 0 auto;display:flex;gap:.4rem;align-items:center;font-weight:400"><input type="checkbox" id="exAuto" checked style="width:auto;margin:0"> Jump to the next number after choosing a key</label></div>
+<label class="chk" style="flex:0 0 auto;margin:0;font-weight:400"><input type="checkbox" id="exAuto" checked><span>Jump to the next number after choosing a key</span></label></div>
 <div class="items" id="exItems"></div>
-<div class="row" style="margin-top:1rem"><button class="btn primary" id="exAdd">Save exam</button><button class="btn" id="exCancel" hidden>Cancel editing</button></div>
-</div>
-<div class="panel"><div class="row"><label>Show<select id="exFilter"></select></label></div><div class="tablewrap"><table id="exTbl"></table></div></div></section>
+<div style="margin-top:.6rem"><button class="btn" id="exAddQ" type="button">+ Add question</button></div>
+<div class="savebar"><button class="btn primary" id="exAdd" type="button">Save exam</button><button class="btn" id="exCancel" type="button" hidden>Cancel editing</button></div>
+</div></div>
+
+<!-- view: answer key -->
+<div data-ev="key" hidden><div class="panel">
+<div class="row noprint"><label>Examination<select id="kvExam"></select></label>
+<button class="btn primary" id="kvPrint" type="button">Print answer key</button><button class="btn" id="kvEdit" type="button">Edit this exam</button></div>
+<div id="kvBody" style="margin-top:1rem"></div></div></div>
+</section>
 
 <!-- MODULES -->
 <section data-s="modules" hidden><div class="panel"><h2>Upload a module</h2>

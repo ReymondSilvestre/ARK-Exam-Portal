@@ -52,7 +52,7 @@ function render() {
   keep("stClass", opts(S.classes, (c) => c.name, "Add a section first"));
   keep("exClass", `<option value="">All sections</option>` + sec); keep("mdClass", `<option value="">All my sections</option>` + sec);
   const eo = opts(S.exams, (e) => `${e.term ? "[" + e.term + "] " : ""}${e.title} (${e.className})`, "Create an exam first");
-  ["shExam", "scExam", "reExam"].forEach((i) => keep(i, eo));
+  ["shExam", "scExam", "reExam", "kvExam"].forEach((i) => keep(i, eo));
   keep("scSec", `<option value="">All sections</option>` + sec); keep("reSec", `<option value="">All sections</option>` + sec);
   keep("shFor", `<option value="blank">Blank sheets (write name by hand)</option>` + S.classes.map((c) => `<option value="${esc(c.id)}">Named sheets: ${esc(c.name)} (${countIn(c)} students)</option>`).join(""));
 
@@ -80,17 +80,22 @@ function render() {
 
   const mix = (e) => { const c = {}; itemsOf(e).forEach((i) => (c[i.type] = (c[i.type] || 0) + 1)); return Object.entries(c).map(([t, n]) => `${TYPE_SHORT[t]} ${n}`).join(", "); };
   const exs = S.exams.filter((e) => !$("exFilter").value || (e.term || "") === $("exFilter").value);
-  $("exTbl").innerHTML = "<tr><th>Title</th><th>Section</th><th>Date</th><th>Items</th><th>Points</th><th>Pass %</th><th>Mode</th><th></th></tr>" +
-    (groupRows(exs, 8, (e) => `<tr><td>${esc(e.title)}</td><td>${esc(e.className)}</td><td>${esc(e.date)}</td><td class="wrapcell">${itemsOf(e).length} (${esc(mix(e))})</td><td>${itemsOf(e).reduce((a, b) => a + b.pts, 0)}</td><td>${e.passing}</td>
-      <td>${e.online ? `<span class="badge ${e.open ? "active" : "warn"}">Online - ${e.open ? "open" : "closed"}</span>${e.timeLimit ? ` <span class="muted fine">${e.timeLimit} min</span>` : ""}` : "Paper"}</td>
-      <td class="actions">${e.online ? `<button class="btn small ${e.open ? "" : "primary"}" data-pub="${esc(e.id)}">${e.open ? "Close" : "Open"}</button>` : ""}<button class="btn small" data-edit="${esc(e.id)}">Edit</button><button class="btn small danger" data-del="${esc(e.id)}">Delete</button></td></tr>`) || "<tr><td colspan=8>No examinations yet.</td></tr>");
+  const card = (e) => { const its = itemsOf(e), pts = its.reduce((x, y) => x + y.pts, 0);
+    return `<div class="excard"><div class="top2"><h4>${esc(e.title)}</h4><span class="badge ${e.online ? "active" : ""}">${e.online ? (e.link ? "Online - paper link" : "Online") : "Printed"}</span></div>
+      <div class="meta"><span class="cm">${esc(e.className)}</span>${e.subject ? `<span class="cm">${esc(e.subject)}</span>` : ""}${e.date ? `<span class="cm">${esc(e.date)}</span>` : ""}
+      <span class="cm" title="${esc(mix(e))}">${its.length} items</span><span class="cm">${pts} pts</span><span class="cm">Pass ${esc(e.passing)}%</span>${e.timeLimit ? `<span class="cm">${e.timeLimit} min</span>` : ""}</div>
+      ${e.online ? `<button type="button" class="switch" role="switch" aria-checked="${!!e.open}" data-pub="${esc(e.id)}" title="Click to ${e.open ? "close" : "open"} this exam"><span class="trk"></span><span>${e.open ? "Open for students" : "Closed - students cannot see it"}</span></button>` : `<span class="muted fine">Printed exam: print the answer sheets, then scan them.</span>`}
+      <div class="acts"><button class="btn small" data-edit="${esc(e.id)}">Edit</button><button class="btn small" data-key="${esc(e.id)}">Answer key</button><button class="btn small" data-sheet="${esc(e.id)}">Answer sheet</button><button class="btn small danger" data-del="${esc(e.id)}">Delete</button></div></div>`; };
+  let lastT, exHtml = "";
+  for (const e of exs) { const t = e.term || "No term"; if (t !== lastT) { lastT = t; exHtml += `<div class="termhead">${esc(t)} - ${exs.filter((y) => (y.term || "No term") === t).length}</div>`; } exHtml += card(e); }
+  $("exList").innerHTML = exHtml || `<p class="muted">No examinations yet. Press <b>+ Create exam</b> to make one.</p>`;
 
   const mds = S.modules.filter((m) => !$("mdFilter").value || (m.term || "") === $("mdFilter").value);
   $("mdTbl").innerHTML = "<tr><th>Title</th><th>Section</th><th>File</th><th>Uploaded</th><th></th></tr>" +
     (groupRows(mds, 5, (m) => `<tr><td class="wrapcell"><b>${esc(m.title)}</b>${m.description ? `<br><span class="muted fine">${esc(m.description)}</span>` : ""}</td><td>${esc(m.className)}</td>
       <td>${m.kind === "link" ? "Link" : esc(m.fileName) + " (" + sizeText(m.size) + ")"}</td><td>${m.createdAt?.toDate ? m.createdAt.toDate().toLocaleDateString() : "-"}</td>
       <td class="actions"><button class="btn small" data-open="${esc(m.id)}">${m.kind === "link" ? "Open" : "Download"}</button><button class="btn small danger" data-delmd="${esc(m.id)}">Remove</button></td></tr>`) || "<tr><td colspan=5>No modules yet.</td></tr>");
-  drawSheet();
+  drawSheet(); if (!$("kvBody").closest("[data-ev]").hidden) renderKey();
 }
 function show(t) {
   document.querySelectorAll("[data-s]").forEach((s) => (s.hidden = s.dataset.s !== t));
@@ -276,26 +281,28 @@ $("stCsv").onchange = (e) => run(async () => {
 });
 
 /* ---------- examinations: collapsible key per number ---------- */
-const D = { items: [], editId: null };
+const D = { items: [], editId: null, mode: "manual" }; // mode: manual = typed questions, link = exam paper link, paper = printed only
 const mkItem = () => ({ type: "mc", key: "", pts: 1, q: "", opts: [] });
 const box = $("exItems");
 $("exBulkType").innerHTML = Object.entries(TYPES).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
 const keyName = (k) => (k === "T" ? "True" : k === "F" ? "False" : k);
 
 function rowHTML(i, open) {
-  const it = D.items[i], auto = isAuto(it.type), online = $("exOnline").checked, nCh = +$("exCh").value;
-  const chips = it.type === "tf" ? ["T", "F"] : it.type === "mc" ? "ABCDE".slice(0, nCh).split("") : [];
+  const it = D.items[i], auto = isAuto(it.type), manual = D.mode === "manual", online = D.mode !== "paper", nCh = +$("exCh").value;
+  const L = "ABCDE".slice(0, nCh).split(""), chips = it.type === "tf" ? ["T", "F"] : it.type === "mc" ? L : [];
   const label = auto ? (it.key ? "Key: " + keyName(it.key) : "No key yet") : "Teacher checks";
   const refLbl = it.type === "ident" ? (online ? "Accepted answer(s): separate with | . A student answer that matches is marked correct automatically; any other waits for your check" : "Reference answer (optional, for your own checking)") : "Rubric or notes (optional)";
-  const body = auto
+  const inlineKey = manual && it.type === "mc"; // typed multiple choice: the letter beside each choice marks the correct one
+  const body = inlineKey ? "" : auto
     ? `<div><span class="lbl">Correct answer</span><div class="chips" role="group" aria-label="Correct answer for number ${i + 1}">${chips.map((c) => `<button type="button" class="chip ${it.key === c ? "on" : ""}" data-k="${c}" aria-pressed="${it.key === c}">${keyName(c)}</button>`).join("")}</div></div>`
     : `<label>${refLbl}<input data-f="key" value="${esc(it.key)}" maxlength="200"></label>`;
-  // what the student reads on screen (online exams only)
-  const qBox = online ? `<label class="wide">${it.type === "tf" ? "Statement" : it.type === "essay" ? "Essay prompt" : "Question"}<textarea data-f="q" rows="2" maxlength="1000">${esc(it.q || "")}</textarea></label>` : "";
-  const oBox = online && it.type === "mc" ? `<div class="wide"><span class="lbl">Choices</span>${"ABCDE".slice(0, nCh).split("").map((L, j) => `<label class="optin"><b>${L}</b><input data-f="opt" data-j="${j}" maxlength="300" value="${esc((it.opts || [])[j] || "")}"></label>`).join("")}</div>` : "";
-  return `<details class="it" data-i="${i}" ${open ? "open" : ""}><summary class="${auto && !it.key ? "miss" : ""}"><b>${i + 1}</b><span class="tp">${TYPE_SHORT[it.type]}</span><span class="ky">${esc(label)}</span><span class="pt">${it.pts} pt${it.pts === 1 ? "" : "s"}</span></summary>
+  const qBox = manual ? `<label class="wide">${it.type === "tf" ? "Statement (the student answers True or False)" : it.type === "essay" ? "Essay prompt" : "Question"}<textarea data-f="q" rows="2" maxlength="1000" placeholder="Type the ${it.type === "tf" ? "statement" : "question"} here">${esc(it.q || "")}</textarea></label>` : "";
+  const oBox = inlineKey ? `<div class="wide"><span class="lbl">Choices <span class="muted fine">(click a letter to mark the correct answer)</span></span>${L.map((c, j) => `<div class="optin"><button type="button" class="chip ${it.key === c ? "on" : ""}" data-k="${c}" aria-pressed="${it.key === c}" aria-label="Mark ${c} as the correct answer">${c}</button><input data-f="opt" data-j="${j}" maxlength="300" placeholder="Choice ${c}" value="${esc((it.opts || [])[j] || "")}"></div>`).join("")}</div>` : "";
+  const snip = manual && it.q ? " - " + esc(it.q.slice(0, 45)) : "";
+  const rm = D.items.length > 1 ? `<div class="wide"><button type="button" class="btn small danger" data-del-q>Remove this question</button></div>` : "";
+  return `<details class="it" data-i="${i}" ${open ? "open" : ""}><summary class="${auto && !it.key ? "miss" : ""}"><b>${i + 1}</b><span class="tp">${TYPE_SHORT[it.type]}<span class="qs">${snip}</span></span><span class="ky">${esc(label)}</span><span class="pt">${it.pts} pt${it.pts === 1 ? "" : "s"}</span></summary>
   <div class="ibody">${qBox}${oBox}<label>Type<select data-f="type">${Object.entries(TYPES).map(([k, v]) => `<option value="${k}" ${k === it.type ? "selected" : ""}>${v}</option>`).join("")}</select></label>${body}
-  <label>Points<input data-f="pts" type="number" min="0.5" max="100" step="0.5" value="${it.pts}"></label></div></details>`;
+  <label>Points<input data-f="pts" type="number" min="0.5" max="100" step="0.5" value="${it.pts}"></label>${rm}</div></details>`;
 }
 function drawItems() {
   const open = new Set([...box.querySelectorAll("details[open]")].map((d) => +d.dataset.i));
@@ -318,6 +325,8 @@ $("exBulk").onclick = () => {
   drawItems(); flash(`Items ${a} to ${b} are now ${TYPE_SHORT[t]}.`, 1);
 };
 box.addEventListener("click", (e) => {
+  const rm = e.target.closest("[data-del-q]");
+  if (rm) { if (D.items.length <= 1) return; D.items.splice(+rm.closest("details").dataset.i, 1); $("exN").value = D.items.length; drawItems(); return; }
   const c = e.target.closest(".chip"); if (!c) return;
   const i = +c.closest("details").dataset.i, it = D.items[i];
   it.key = it.key === c.dataset.k ? "" : c.dataset.k; redraw(i);
@@ -337,7 +346,41 @@ box.addEventListener("input", (e) => {
   if (f === "q") it.q = e.target.value;
   if (f === "opt") { it.opts = it.opts || []; it.opts[+e.target.dataset.j] = e.target.value; }
 });
-$("exOnline").onchange = () => { $("exOnlineBox").hidden = !$("exOnline").checked; drawItems(); };
+const MODE_HINT = { manual: "Write each question. Click a choice letter to mark the correct answer. Identification: type the accepted answers, separated with | .",
+  link: "Students read your exam paper link beside their answer sheet. Here you only choose the correct answer for each number.",
+  paper: "Choose the correct answer for each number. Print the answer sheets with the Answer sheets button, then scan them." };
+function setMode(m) {
+  D.mode = m; $("exOnline").checked = m !== "paper"; $("exOnlineBox").hidden = m === "paper"; $("exLinkRow").hidden = m !== "link"; $("exStepHint").textContent = MODE_HINT[m];
+  document.querySelectorAll("#exMode .mode").forEach((b) => b.classList.toggle("on", b.dataset.mode === m)); drawItems();
+}
+$("exMode").onclick = (e) => { const b = e.target.closest(".mode"); if (b) setMode(b.dataset.mode); };
+$("exAddQ").onclick = () => {
+  if (D.items.length >= MAX_ITEMS) return flash(`An exam can have up to ${MAX_ITEMS} items.`);
+  D.items.push(mkItem()); $("exN").value = D.items.length; drawItems();
+  const d = box.lastElementChild; d.open = true; d.scrollIntoView({ block: "center", behavior: "smooth" }); d.querySelector("textarea,select")?.focus();
+};
+/** Examination page views: My exams / Create exam / Answer key */
+function exView(v) {
+  document.querySelectorAll("[data-ev]").forEach((p) => (p.hidden = p.dataset.ev !== v));
+  document.querySelectorAll("#exNav [data-exv]").forEach((b) => b.classList.toggle("on", b.dataset.exv === v));
+  if (v === "key") renderKey();
+}
+$("exNav").onclick = (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.id === "exGoSheet") return show("sheet");
+  if (b.dataset.exv === "create" && D.editId) resetBuilder();
+  exView(b.dataset.exv);
+};
+function renderKey() {
+  const ex = examOf($("kvExam").value), out = $("kvBody");
+  if (!ex) { out.innerHTML = "<p class='muted'>Create an exam first.</p>"; return; }
+  const its = itemsOf(ex), tot = its.reduce((a, b) => a + b.pts, 0);
+  const keyText = (it) => it.type === "mc" ? (it.key ? it.key + (it.opts?.["ABCDE".indexOf(it.key)] ? " - " + it.opts["ABCDE".indexOf(it.key)] : "") : "-")
+    : it.type === "tf" ? keyName(it.key) || "-" : it.type === "ident" ? (it.key ? it.key.split("|").map((x) => x.trim()).join("  /  ") : "Teacher checks") : (it.key ? "Teacher checks: " + it.key : "Teacher checks");
+  out.innerHTML = `<h2 style="margin:0">${esc(ex.title)} - Answer key</h2><p class="muted">${[ex.subject, ex.className, ex.term, ex.date].filter(Boolean).map(esc).join(" | ")} | ${its.length} items | ${tot} points | Passing ${esc(ex.passing)}%</p>
+    <div class="tablewrap"><table class="kvt"><tr><th>#</th><th>Type</th><th>Question</th><th>Correct answer</th><th>Points</th></tr>${its.map((it, i) => `<tr><td>${i + 1}</td><td>${TYPE_SHORT[it.type]}</td><td class="wrapcell">${esc(it.q || "")}</td><td class="k">${esc(keyText(it))}</td><td>${it.pts}</td></tr>`).join("")}</table></div>`;
+}
+$("kvExam").onchange = renderKey; $("kvPrint").onclick = () => print(); $("kvEdit").onclick = () => editExam(examOf($("kvExam").value));
 
 
 /** What the student page needs, saved on each result so students never need to read the exam (and its answer key). */
@@ -388,36 +431,42 @@ const deleteExam = (id) => run(async () => {
 
 function resetBuilder() {
   D.editId = null; D.items = []; ["exTitle", "exSub", "exDate"].forEach((i) => ($(i).value = "")); $("exPass").value = 75; $("exCh").value = 5; $("exTerm").value = store.get("ark.term") || TERMS[0];
-  $("exOnline").checked = false; $("exOnlineBox").hidden = true; $("exTime").value = 0; $("exInst").value = ""; $("exLink").value = ""; $("exShow").checked = true; $("exOpen").checked = false;
-  $("exHead").textContent = "New examination"; $("exAdd").textContent = "Save exam"; $("exCancel").hidden = true; resize(20);
+  $("exTime").value = 0; $("exInst").value = ""; $("exLink").value = ""; $("exShow").checked = true; $("exOpen").checked = false;
+  $("exHead").textContent = "New examination"; $("exAdd").textContent = "Save exam"; $("exCancel").hidden = true; setMode("manual"); resize(20); box.children[0]?.setAttribute("open", "");
 }
-$("exCancel").onclick = resetBuilder;
-$("exTbl").onclick = (e) => {
+$("exCancel").onclick = () => { resetBuilder(); exView("list"); };
+$("exList").onclick = (e) => {
   const d = e.target.closest("[data-del]"); if (d) return deleteExam(d.dataset.del);
   const pb = e.target.closest("[data-pub]"); if (pb) return togglePub(pb.dataset.pub);
-  const b = e.target.closest("[data-edit]"); if (!b) return; const ex = examOf(b.dataset.edit); if (!ex) return;
+  const kb = e.target.closest("[data-key]"); if (kb) { exView("key"); $("kvExam").value = kb.dataset.key; return renderKey(); }
+  const sb = e.target.closest("[data-sheet]"); if (sb) { show("sheet"); $("shExam").value = sb.dataset.sheet; return drawSheet(); }
+  const b = e.target.closest("[data-edit]"); if (!b) return; editExam(examOf(b.dataset.edit));
+};
+function editExam(ex) {
+  if (!ex) return;
   D.editId = ex.id; D.items = itemsOf(ex).map((x) => ({ ...x }));
   $("exTitle").value = ex.title; $("exTerm").value = ex.term || TERMS[0]; $("exSub").value = ex.subject || ""; $("exClass").value = ex.classId || ""; $("exDate").value = ex.date || "";
   $("exCh").value = ex.choices || 5; $("exPass").value = ex.passing || 75; $("exN").value = D.items.length;
-  $("exOnline").checked = !!ex.online; $("exOnlineBox").hidden = !ex.online; $("exTime").value = ex.timeLimit || 0; $("exInst").value = ex.instructions || ""; $("exLink").value = ex.link || ""; $("exShow").checked = ex.showAnswers !== false; $("exOpen").checked = !!ex.open;
+  setMode(ex.online ? (ex.link ? "link" : "manual") : "paper"); $("exTime").value = ex.timeLimit || 0; $("exInst").value = ex.instructions || ""; $("exLink").value = ex.link || ""; $("exShow").checked = ex.showAnswers !== false; $("exOpen").checked = !!ex.open;
   drawItems();
-  $("exHead").textContent = "Edit examination"; $("exAdd").textContent = "Update exam"; $("exCancel").hidden = false; scrollTo({ top: 0, behavior: "smooth" });
+  $("exHead").textContent = "Edit examination"; $("exAdd").textContent = "Update exam"; $("exCancel").hidden = false; exView("create"); scrollTo({ top: 0, behavior: "smooth" });
   flash("Editing. Saved results are re-scored automatically with the new key.", 1);
-};
+}
 $("exAdd").onclick = () => run(async () => {
-  const c = clsOf($("exClass").value), title = $("exTitle").value.trim(), online = $("exOnline").checked, link = $("exLink").value.trim(), nCh = +$("exCh").value;
+  const c = clsOf($("exClass").value), title = $("exTitle").value.trim(), online = D.mode !== "paper", link = D.mode === "link" ? $("exLink").value.trim() : "", nCh = +$("exCh").value;
   if (!title) return flash("Enter a title for the examination.");
   const missing = D.items.map((it, i) => (isAuto(it.type) && !it.key ? i : -1)).filter((i) => i >= 0);
   if (missing.length) {
     missing.forEach((i) => (box.children[i].open = true)); box.children[missing[0]].scrollIntoView({ block: "center", behavior: "smooth" });
     return flash(`Choose the correct answer for number ${missing.length > 8 ? missing.slice(0, 8).map((i) => i + 1).join(", ") + "..." : missing.map((i) => i + 1).join(", ")}.`);
   }
+  if (D.mode === "link" && !link) return flash("Paste the link to your exam paper, or choose another way to take the exam.");
   if (link && !safeUrl(link)) return flash("The exam paper link must start with http:// or https://");
-  if (online && !link) { // without a paper link, students can only see what is typed here
+  if (D.mode === "manual") { // typed exam: students can only see what is typed here
     const bad = D.items.findIndex((it) => !String(it.q || "").trim() || (it.type === "mc" && Array.from({ length: nCh }, (_, j) => String((it.opts || [])[j] || "").trim()).some((x) => !x)));
     if (bad >= 0) {
       box.children[bad].open = true; box.children[bad].scrollIntoView({ block: "center", behavior: "smooth" });
-      return flash(`Number ${bad + 1} needs its ${D.items[bad].type === "mc" ? "question and all its choices" : "question"}. Or paste a link to your exam paper above, so students only choose their answers.`);
+      return flash(`Number ${bad + 1} needs its ${D.items[bad].type === "mc" ? "question and all its choices" : "question"}.`);
     }
   }
   const items = D.items.map((x) => ({ type: x.type, key: isAuto(x.type) ? x.key : String(x.key || "").trim(), pts: +x.pts > 0 ? +x.pts : 1,
@@ -432,7 +481,7 @@ $("exAdd").onclick = () => run(async () => {
   await syncPaper(id, data);
   store.set("ark.term", data.term);
   if (D.editId) await rescore(D.editId, data);
-  const was = D.editId; resetBuilder(); await refresh();
+  const was = D.editId; resetBuilder(); exView("list"); await refresh();
   flash(was ? "Examination updated." : online ? (data.open ? "Examination saved and open for students." : "Examination saved. Press Open in the list when you want students to see it.") : "Examination saved.", 1);
 });
 resetBuilder();
