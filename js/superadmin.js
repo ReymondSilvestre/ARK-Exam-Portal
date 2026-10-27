@@ -46,6 +46,7 @@ async function refresh() {
         <td>${n[i][0]}</td><td>${n[i][1]}</td><td><span class="badge ${esc(sc.status)}">${esc(sc.status)}</span></td><td>${fmt(sc.createdAt)}</td>
         <td class="actions"><button class="btn small" data-act="toggle" data-id="${esc(sc.id)}">${sc.status === "active" ? "Suspend school" : "Reactivate"}</button>
         ${ad[0] ? `<button class="btn small" data-act="pw" data-uid="${esc(ad[0].uid)}">Reset IT Admin password</button>` : ""}
+        <button class="btn small danger" data-act="clear" data-id="${esc(sc.id)}" data-name="${esc(sc.name)}" data-code="${esc(sc.code)}" title="Delete all data of ${esc(sc.name)} but keep the school">Delete all data</button>
         <button class="icon-btn" data-act="delete" data-id="${esc(sc.id)}" data-name="${esc(sc.name)}" title="Delete ${esc(sc.name)}" aria-label="Delete ${esc(sc.name)}">&#128465;</button></td></tr>`; }).join("") || "<tr><td colspan=8>No schools registered yet.</td></tr>");
   } catch (e) { flash("Could not load schools: " + friendlyError(e)); }
 }
@@ -76,9 +77,11 @@ $("newS").addEventListener("submit", async (e) => {
 });
 
 /* ---------- client-only cascade delete (fallback when no Cloud Function is deployed) ----------
-   Deletes every Firestore record of a school directly from the browser, in batches of 400.
-   Cannot remove the accounts' Firebase Authentication logins - only server code (the
-   superDeleteSchool Cloud Function) can do that; this is the best a client app can do alone. */
+   Deletes the Firestore records of a school directly from the browser, in batches of 400.
+   Cannot remove the accounts' Firebase Authentication logins - only server code (the Cloud Functions)
+   can do that; this is the best a client app can do alone.
+   removeSchool = false : "Delete all data" - everything goes, but the school and its IT Admin stay registered.
+   removeSchool = true  : "Delete school"   - everything goes, including the IT Admin and the school itself. */
 async function delMany(ref, docs) {
   for (let i = 0; i < docs.length; i += 400) {
     const b = writeBatch(db);
@@ -87,34 +90,46 @@ async function delMany(ref, docs) {
   }
 }
 const idsOf = (snap) => snap.docs.map((d) => d.id);
-async function cascadeDeleteSchool(schoolId) {
-  const byOwner = async (coll, ownerUids) => {
-    for (const uid of ownerUids) {
-      const snap = await getDocs(query(collection(db, coll), where("ownerUid", "==", uid)));
-      await delMany((id) => doc(db, coll, id), idsOf(snap));
-    }
+const SCHOOL_COLLECTIONS = ["scanResults", "examAttempts", "examSubmissions", "examKeys", "examPapers", "modules",
+  "examinations", "answerKeys", "answerSheets", "enrollments", "teacherLinks", "classCodes", "students", "classes"];
+async function eraseSchoolData(schoolId, removeSchool) {
+  const sweep = async (coll, field, value) => {
+    const snap = await getDocs(query(collection(db, coll), where(field, "==", value)));
+    await delMany((id) => doc(db, coll, id), idsOf(snap));
   };
   const peopleSnap = await getDocs(query(collection(db, "users"), where("schoolId", "==", schoolId)));
-  const people = peopleSnap.docs.map((d) => d.data());
+  const people = peopleSnap.docs.map((d) => ({ uid: d.id, ...d.data() })).filter((p) => p.role !== "superadmin");
   // The IT Admin also has every teacher tool, so they may own sections/exams/students directly too.
-  const teacherUids = people.filter((p) => p.role === "teacher" || p.role === "admin").map((p) => p.uid);
+  const owners = people.filter((p) => p.role === "teacher" || p.role === "admin").map((p) => p.uid);
 
-  // Module files are stored in numbered chunk documents, not tied to a schoolId - find them via their module.
-  for (const uid of teacherUids) {
+  // Module files are stored in numbered chunk documents - find them via their module.
+  for (const uid of owners) {
     const mods = await getDocs(query(collection(db, "modules"), where("ownerUid", "==", uid)));
     for (const m of mods.docs) {
       const ids = Array.from({ length: m.data().chunks || 0 }, (_, i) => `${m.id}_${i}`);
       await delMany((id) => doc(db, "moduleChunks", id), ids);
     }
   }
-  for (const coll of ["scanResults", "examAttempts", "examSubmissions", "examKeys", "examPapers", "modules",
-      "examinations", "answerKeys", "answerSheets", "enrollments", "teacherLinks", "classCodes", "students", "classes"])
-    await byOwner(coll, teacherUids);
-
-  const auditSnap = await getDocs(query(collection(db, "auditLogs"), where("schoolId", "==", schoolId)));
-  await delMany((id) => doc(db, "auditLogs", id), idsOf(auditSnap));
-  await delMany((id) => doc(db, "users", id), idsOf(peopleSnap));
-  await deleteDoc(doc(db, "schools", schoolId));
+  for (const coll of SCHOOL_COLLECTIONS) {
+    for (const uid of owners) await sweep(coll, "ownerUid", uid);   // everything a teacher / IT Admin owns
+    await sweep(coll, "schoolId", schoolId);                        // anything left that is stamped with the school
+  }
+  await sweep("auditLogs", "schoolId", schoolId);
+  // Profiles last, so the operation can simply be repeated if it is interrupted. The IT Admin stays unless the school goes.
+  const doomed = peopleSnap.docs.filter((d) => removeSchool || d.data().role !== "admin");
+  await delMany((id) => doc(db, "users", id), doomed.map((d) => d.id));
+  if (removeSchool) await deleteDoc(doc(db, "schools", schoolId));
+}
+/** Runs the Cloud Function; if none is deployed, falls back to the browser-only version. Returns true when logins were removed too. */
+async function runErase(fnName, schoolId, removeSchool) {
+  try {
+    await httpsCallable(getFunctions(app), fnName)({ schoolId });
+    return true;
+  } catch (err) {
+    if (!["functions/not-found", "functions/internal", "functions/unavailable"].includes(err.code)) throw err;
+    await eraseSchoolData(schoolId, removeSchool);
+    return false;
+  }
 }
 
 $("tbl").addEventListener("click", async (e) => {
@@ -125,22 +140,22 @@ $("tbl").addEventListener("click", async (e) => {
       if (!confirm(`${next === "suspended" ? "Suspend" : "Reactivate"} ${sc.name}? ${next === "suspended" ? "Nobody in this school can sign in or use the system until you reactivate it." : ""}`)) return;
       await updateDoc(doc(db, "schools", sc.id), { status: next, updatedAt: serverTimestamp() });
       await audit(sc.id, "school." + next, "", { name: sc.name }); flash(`${sc.name} is now ${next}.`, true);
+    } else if (b.dataset.act === "clear") {
+      const { name, code } = b.dataset;
+      if (!confirm(`Delete ALL DATA of ${name}?\n\nThis removes every teacher and student account, section, exam, result, module, classroom code and activity log of this school.\nThe school stays registered and its IT Admin can still sign in, but starts completely empty.\n\nThis cannot be undone.`)) return;
+      if (prompt(`Type the school code to confirm: ${code}`) !== code) { flash("Nothing was deleted: the school code did not match."); return; }
+      b.disabled = true; flash(`Deleting all data of ${name}... this can take a minute. Please keep this page open.`, true);
+      const full = await runErase("superClearSchoolData", b.dataset.id, false);
+      flash(full ? `All data of ${name} was deleted. The school and its IT Admin are still registered.`
+        : `All records of ${name} were deleted; the school and its IT Admin are still registered. Sign-in logins of the removed teachers and students were NOT removed (no Cloud Function deployed) - clear them in Firebase console > Authentication > Users to free up those emails.`, true);
     } else if (b.dataset.act === "delete") {
       const name = b.dataset.name;
-      if (!confirm(`Permanently delete ${name}? This removes its IT Admin, every teacher and student account, and all of their sections, exams, results and modules. This cannot be undone.`)) return;
+      if (!confirm(`Permanently delete ${name}?\n\nThis removes the school itself, its IT Admin, every teacher and student account, and all of their sections, exams, results and modules.\n\nThis cannot be undone.`)) return;
       if (prompt(`Type the school name to confirm: ${name}`) !== name) { flash("Deletion cancelled: the name did not match."); return; }
-      try {
-        await httpsCallable(getFunctions(app), "superDeleteSchool")({ schoolId: b.dataset.id });
-        flash(`${name} and all of its accounts were deleted.`, true);
-      } catch (err) {
-        if (!["functions/not-found", "functions/internal", "functions/unavailable"].includes(err.code)) throw err;
-        // No Cloud Function deployed: delete everything straight from the browser instead. This removes
-        // all of the school's data, but a client app cannot delete someone else's sign-in login, so the
-        // accounts' logins are left behind (they can no longer sign in anywhere useful - their profile
-        // is gone - but the login entries themselves stay in Firebase Authentication until removed there by hand).
-        await cascadeDeleteSchool(b.dataset.id);
-        flash(`${name} and its records were deleted. Sign-in logins were NOT removed (no Cloud Function deployed) - clear them in Firebase console > Authentication > Users if you want to free up those emails.`, true);
-      }
+      b.disabled = true; flash(`Deleting ${name} and all of its data... this can take a minute. Please keep this page open.`, true);
+      const full = await runErase("superDeleteSchool", b.dataset.id, true);
+      flash(full ? `${name} and all of its data and accounts were deleted.`
+        : `${name} and its records were deleted. Sign-in logins were NOT removed (no Cloud Function deployed) - clear them in Firebase console > Authentication > Users if you want to free up those emails.`, true);
     } else {
       const a = admins.find((x) => x.uid === b.dataset.uid); if (!a || !confirm(`Set a new temporary password for ${a.displayName}?`)) return;
       const pw = genPassword();
@@ -149,6 +164,6 @@ $("tbl").addEventListener("click", async (e) => {
       popup(`New password for ${a.displayName}`, "Give this to the IT Admin in person. It is shown once. They must choose a new one at the next sign-in.", pw);
     }
     await refresh();
-  } catch (err) { flash(friendlyError(err)); }
+  } catch (err) { b.disabled = false; flash(friendlyError(err)); }
 });
 refresh();

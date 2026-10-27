@@ -10,6 +10,11 @@ firestore.rules firebase.json firestore.indexes.json
 ```
 
 ## New in this update
+- **Delete all data of a school, or delete the school with its data (Super Admin).** Each school row on the Super Admin page has two buttons:
+  - **Delete all data** (red button): wipes every teacher and student account, section, exam, result, module, classroom code and activity log of that school, but **keeps the school registered and its IT Admin**, who can sign in to an empty school. Confirm by typing the *school code*. Cloud Function: `superClearSchoolData`.
+  - **Trash icon**: deletes everything above **and** the IT Admin and the school itself. Confirm by typing the *school name*. Cloud Function: `superDeleteSchool`.
+  - With the Cloud Functions deployed (`firebase deploy --only functions`) the sign-in logins in Firebase Authentication are removed too. Without them the page falls back to deleting the Firestore records from the browser (this needs the updated `firestore.rules`, which let the Super Admin read school data for that purpose); the logins are then left in Authentication until removed by hand.
+  - Both functions are safe to run again if a very large school times out: they pick up whatever is left.
 - **School branding (IT Admin).** IT Admin > Branding: set the school name shown on screen and upload a logo (stored on the school's own document). Replaces the "ARK" mark across that school's Teacher, Student and IT Admin pages (not the sign-in page). Works with no Cloud Function.
 - **Delete a school (Super Admin).** Super Admin page: a trash icon on each row permanently deletes a school - its IT Admin, every teacher and student account in it, and everything they own (sections, exams, results, modules). Needs typing the school's name to confirm.
   - With the `superDeleteSchool` Cloud Function deployed: also deletes the accounts' sign-in logins from Firebase Authentication.

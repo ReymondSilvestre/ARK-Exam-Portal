@@ -68,9 +68,11 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName','logo','updatedAt'])
           && (!('displayName' in request.resource.data) || (request.resource.data.displayName is string && request.resource.data.displayName.size() <= 80))
           && (!('logo' in request.resource.data) || (request.resource.data.logo is string && request.resource.data.logo.size() <= 900000)));
-      // Deletion cascades through every record of the school. The superDeleteSchool Cloud Function
-      // does this (and also removes the sign-in logins); without it, the Super Admin page falls back
-      // to deleting these same records straight from the browser, which these rules allow directly.
+      // Deletion cascades through every record of the school. The superDeleteSchool / superClearSchoolData
+      // Cloud Functions do this (and also remove the sign-in logins). Without them, the Super Admin page falls
+      // back to deleting the same records from the browser: the Super Admin is therefore allowed to read
+      // (list) and delete school data in the collections below. Remove the `isSuper() ||` read additions if
+      // you only ever use the Cloud Functions and want the Super Admin unable to read school data.
       allow delete: if isSuper();
     }
 
@@ -134,14 +136,14 @@ service cloud.firestore {
     // The code is the secret: anyone signed in who knows it can fetch ONE code document (no listing).
     match /classCodes/{code} {
       allow get: if liveAccount();
-      allow list: if isStaff() && resource.data.ownerUid == request.auth.uid;
+      allow list: if isSuper() || (isStaff() && resource.data.ownerUid == request.auth.uid);
       allow create: if isStaff() && mine() && sameSchool() && request.resource.data.code == code;
       allow update: if isStaff() && owns();
       allow delete: if (isStaff() && owns()) || isSuper();
     }
     // A student joins a classroom with the teacher's code. Document id = studentId_classId.
     match /enrollments/{id} {
-      allow read: if (isStaff() && resource.data.ownerUid == request.auth.uid)
+      allow read: if isSuper() || (isStaff() && resource.data.ownerUid == request.auth.uid)
         || (isStudent() && resource.data.studentId == me().studentId);
       allow create: if isStudent()
         && request.resource.data.keys().hasOnly(['studentId','studentUid','studentName','studentNumber','classId','className','code','ownerUid','teacherName','schoolId','joinedAt'])
@@ -159,7 +161,7 @@ service cloud.firestore {
     }
     // One link per (student, teacher): lets the student see that teacher's "all sections" modules.
     match /teacherLinks/{id} {
-      allow read: if (isStaff() && resource.data.ownerUid == request.auth.uid)
+      allow read: if isSuper() || (isStaff() && resource.data.ownerUid == request.auth.uid)
         || (isStudent() && resource.data.studentId == me().studentId);
       allow create: if isStudent()
         && request.resource.data.keys().hasOnly(['studentId','ownerUid','classId','schoolId','createdAt'])
@@ -177,7 +179,7 @@ service cloud.firestore {
     /* ---------------- students ---------------- */
     // Document id = Exam ID No. Owned by the adviser (home teacher) who created it.
     match /students/{sid} {
-      allow read: if (isStaff() && mayRead()) || (isAdmin() && inMySchool())
+      allow read: if isSuper() || (isStaff() && mayRead()) || (isAdmin() && inMySchool())
         || (isStudent() && me().studentId == sid);
       allow create: if isStaff() && mine() && sameSchool() && request.resource.data.number == sid;
       allow update: if (isStaff() && owns() && sameOwner())
@@ -189,7 +191,7 @@ service cloud.firestore {
 
     /* ---------------- results (a student sees results from EVERY teacher) ---------------- */
     match /scanResults/{id} {
-      allow read:   if (isStaff() && mayRead()) || (isAdmin() && inMySchool())
+      allow read:   if isSuper() || (isStaff() && mayRead()) || (isAdmin() && inMySchool())
                     || (isStudent() && resource.data.studentId == me().studentId);
       allow create: if (isStaff() && mine() && sameSchool()) || studentMayPost(id);
       allow update: if isStaff() && owns() && sameOwner();
@@ -198,13 +200,13 @@ service cloud.firestore {
 
     /* ---------------- modules (teaching files, stored in chunks) ---------------- */
     match /modules/{id} {
-      allow read:   if (isStaff() && mayRead()) || studentSees(resource.data.ownerUid, resource.data.classId);
+      allow read:   if isSuper() || (isStaff() && mayRead()) || studentSees(resource.data.ownerUid, resource.data.classId);
       allow create: if isStaff() && mine();
       allow update: if isStaff() && owns() && sameOwner();
       allow delete: if (isStaff() && owns()) || isSuper();
     }
     match /moduleChunks/{id} {
-      allow read:   if (isStaff() && mayRead())
+      allow read:   if isSuper() || (isStaff() && mayRead())
                     || studentSees(
                           get(/databases/$(database)/documents/modules/$(resource.data.moduleId)).data.ownerUid,
                           get(/databases/$(database)/documents/modules/$(resource.data.moduleId)).data.classId);
@@ -217,21 +219,21 @@ service cloud.firestore {
     // examPapers: the student-readable copy of an online exam (questions and choices, NEVER the answer key).
     // The key lives in `examinations` (teacher only) and in `examKeys` (students may read it only AFTER they have submitted).
     match /examPapers/{id} {
-      allow read:   if (isStaff() && mayRead()) || (isAdmin() && inMySchool())
+      allow read:   if isSuper() || (isStaff() && mayRead()) || (isAdmin() && inMySchool())
                     || (studentSees(resource.data.ownerUid, resource.data.classId) && resource.data.open == true);
       allow create: if isStaff() && mine() && sameSchool();
       allow update: if isStaff() && owns() && sameOwner();
       allow delete: if (isStaff() && owns()) || isSuper();
     }
     match /examKeys/{id} {
-      allow read:   if (isStaff() && mayRead()) || (isStudent() && exists(/databases/$(database)/documents/examSubmissions/$(id + '_' + me().studentId)));
+      allow read:   if isSuper() || (isStaff() && mayRead()) || (isStudent() && exists(/databases/$(database)/documents/examSubmissions/$(id + '_' + me().studentId)));
       allow create: if isStaff() && mine() && sameSchool();
       allow update: if isStaff() && owns() && sameOwner();
       allow delete: if (isStaff() && owns()) || isSuper();
     }
     // examSubmissions: the student's answers, written once and locked (no update). Document id = examId_studentId.
     match /examSubmissions/{id} {
-      allow read:   if (isStaff() && mayRead()) || (isStudent() && (resource == null || resource.data.studentId == me().studentId));
+      allow read:   if isSuper() || (isStaff() && mayRead()) || (isStudent() && (resource == null || resource.data.studentId == me().studentId));
       allow create: if isStudent()
         && request.resource.data.keys().hasOnly(['examId','studentId','studentUid','ownerUid','schoolId','answers','submittedAt'])
         && request.resource.data.studentId == me().studentId
@@ -249,7 +251,7 @@ service cloud.firestore {
     }
     // examAttempts: written when a student opens an exam (server time), so the time limit cannot be restarted. Document id = examId_studentId.
     match /examAttempts/{id} {
-      allow read:   if (isStaff() && mayRead()) || (isStudent() && (resource == null || resource.data.studentId == me().studentId));
+      allow read:   if isSuper() || (isStaff() && mayRead()) || (isStudent() && (resource == null || resource.data.studentId == me().studentId));
       allow create: if isStudent()
         && request.resource.data.keys().hasOnly(['examId','studentId','studentUid','ownerUid','schoolId','startedAt'])
         && request.resource.data.studentId == me().studentId
@@ -266,7 +268,7 @@ service cloud.firestore {
 
     /* ---------------- other teacher-owned data ---------------- */
     match /{coll}/{id} {
-      allow read:   if coll in ['classes','examinations','answerKeys','answerSheets'] && ((isStaff() && mayRead()) || (isAdmin() && inMySchool()));
+      allow read:   if coll in ['classes','examinations','answerKeys','answerSheets'] && (isSuper() || (isStaff() && mayRead()) || (isAdmin() && inMySchool()));
       allow create: if coll in ['classes','examinations','answerKeys','answerSheets'] && isStaff() && mine() && sameSchool();
       allow update: if coll in ['classes','examinations','answerKeys','answerSheets'] && isStaff() && owns() && sameOwner();
       allow delete: if coll in ['classes','examinations','answerKeys','answerSheets'] && ((isStaff() && owns()) || isSuper());
