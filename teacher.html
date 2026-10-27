@@ -34,6 +34,11 @@
 <h3>Student logins</h3>
 <p class="muted fine">Username = Exam ID No. Temporary password = birth year + first letter of the last name (example <b>2012D</b>). The student must choose a new password at first sign-in.</p>
 <div class="row"><button class="btn" id="stLogins">Create logins for everyone in this section</button></div>
+<div class="listbar noprint"><h3>Class list</h3>
+<div class="fpop" id="stFilter"><button type="button" class="btn small iconbtn" aria-haspopup="true" aria-expanded="false" title="Filter and sort the class list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18l-7 8.5V19l-4 2v-8.5z"/></svg><span>Filter</span></button>
+<div class="fpanel" hidden><label>Section<select id="stFSec"></select></label>
+<label>Sort names<select id="stFSort"><option value="az">A &rarr; Z (alphabetical)</option><option value="za">Z &rarr; A</option><option value="id">Exam ID No.</option></select></label>
+<button type="button" class="btn small" data-reset>Reset</button></div></div></div>
 <div class="tablewrap"><table id="stTbl"></table></div></div></section>
 
 <!-- EXAMINATIONS -->
@@ -44,6 +49,16 @@
 <div class="row" style="margin-top:.8rem"><label>Number of items<input type="number" id="exN" min="1" max="100" value="20"></label>
 <label>Multiple choice letters<select id="exCh"><option value="5">A-E</option><option value="4">A-D</option></select></label>
 <label>Passing %<input type="number" id="exPass" value="75" min="1" max="100"></label></div>
+
+<div class="onlinebox">
+<label class="chk"><input type="checkbox" id="exOnline"><span>Students answer this exam online, on their own account<small>The system scores it automatically with your answer key. You can still print answer sheets for the same exam.</small></span></label>
+<div id="exOnlineBox" hidden>
+<div class="row"><label class="narrow">Time limit (minutes)<input type="number" id="exTime" min="0" max="600" value="0"><small>0 = no limit</small></label>
+<label>Exam paper link (optional)<input id="exLink" type="url" placeholder="https://"><small>Google Drive / PDF link. If you add one, you do not have to type every question below: students read the paper and just choose their answers.</small></label></div>
+<label style="margin-top:.6rem">Instructions for students (optional)<textarea id="exInst" rows="2" maxlength="1000"></textarea></label>
+<label class="chk"><input type="checkbox" id="exShow" checked><span>After submitting, show the student which items were wrong and the correct answer</span></label>
+<label class="chk" style="margin-bottom:0"><input type="checkbox" id="exOpen"><span>Open it for students as soon as I save (you can open or close it later from the list)</span></label>
+</div></div>
 
 <h3>Item types and answer key</h3>
 <small>Tap a number to open it. Multiple choice and True/False are scanned automatically. Identification and essay are checked by you after scanning.</small>
@@ -93,18 +108,21 @@
 <div class="row" style="margin-top:.8rem"><label>Exam ID No. (type it from the sheet)<input id="scId" autocomplete="off"><small id="scHint"></small></label>
 <label>Student<select id="scStu"></select></label>
 <button class="btn primary" id="scSave">Save result</button></div>
-<p id="sum"><b></b></p><div class="q" id="grid"></div></div></div></section>
+<p id="sum"><b></b></p><div class="q" id="grid"></div>
+<div id="typedBox" hidden><h3>Written answers from the student</h3><div id="typedList"></div></div></div></div></section>
 
 <!-- RESULTS -->
 <section data-s="results" hidden><div class="panel"><h2>Results</h2>
 <div class="row noprint"><label>Examination<select id="reExam"></select></label>
-<label>Section<select id="reSec"></select></label>
+<div class="fpop" id="reFilter"><button type="button" class="btn iconbtn" aria-haspopup="true" aria-expanded="false" title="Filter and sort the results"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18l-7 8.5V19l-4 2v-8.5z"/></svg><span>Filter</span></button>
+<div class="fpanel" hidden><label>Section<select id="reSec"></select></label>
 <label>Sort by<select id="reSort">
-<option value="sec_name">Section, then name</option><option value="sec_score">Section, then highest score</option>
+<option value="sec_name">Section, then name A-Z</option><option value="sec_name_desc">Section, then name Z-A</option><option value="sec_score">Section, then highest score</option>
 <option value="score">Highest score (all sections)</option><option value="wrong">Most wrong answers</option>
-<option value="name">Name A-Z</option><option value="id">Exam ID No.</option></select></label>
+<option value="name">Name A-Z</option><option value="name_desc">Name Z-A</option><option value="id">Exam ID No.</option></select></label>
+<button type="button" class="btn small" data-reset>Reset</button></div></div>
 <button class="btn primary" id="xlsx">Download Excel</button><button class="btn" onclick="print()">Print report</button></div>
-<p id="stats"></p><div class="tablewrap"><table id="reTbl"></table></div>
+<p id="stats"></p><div id="waiting" class="noprint" hidden></div><div class="tablewrap"><table id="reTbl"></table></div>
 <h2 style="margin-top:1rem">Item analysis (% correct)</h2><div class="q" id="items"></div></div></section>
 </div>
 <script type="module" src="js/teacher.js"></script>

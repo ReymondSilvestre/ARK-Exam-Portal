@@ -1,4 +1,4 @@
-# ARK Exam Scanner - version 4 (schools, faculty accounts, classroom codes)
+# ARK Exam Scanner - version 5 (online exams, filter icon)
 
 Folder layout (same as before, plus `superadmin.html` and `js/superadmin.js`):
 ```
@@ -8,6 +8,19 @@ js/  auth.js superadmin.js admin.js teacher.js student.js omr.js files.js fireba
 functions/  index.js package.json
 firestore.rules firebase.json firestore.indexes.json
 ```
+
+## New in version 5
+- **Filter icon** (Students list and Results page): pick a section or *All sections* (grouped per section) and sort names A-Z, Z-A or by Exam ID No.
+- **Online exams.** Examinations > tick *Students answer this exam online*. Type each question (and the choices for multiple choice) or paste a link to your exam paper. Set a time limit if you want, then *Open* it. Students see it under **Online exams**, answer, submit once, and get the score at once. Results land in the normal Results page (ranking, Excel, item analysis work as before). Identification answers that match your accepted answers (separate several with `|`) are marked correct automatically when you open Results; other identification answers and essays wait for your check (*Check* button shows what the student wrote). *Retake* on a result lets a student start over. *Close* stops new submissions.
+- **Answer sheet**: the footer line (title / Exam ID / "ARK sheet v3") is removed.
+
+### Deploy for v5 (no Cloud Function needed)
+1. Replace the files, keep your `js/firebase-config.js`.
+2. Firestore > Rules: paste `firestore.rules` > Publish. That is all.
+
+How grading stays fair without a server: students read questions from `examPapers` (no key). When they press Submit, their answers are saved once in `examSubmissions` and locked. Only then do the rules let them read `examKeys`, so the browser can score the locked answers. The Results page re-scores every online result from the locked answers, so a changed score on a student's device never counts.
+Limits: after submitting, a student could look up the key and tell others, so use *Close* when the class period ends. Identification matches and identification/essay points are applied when you open the Results page (the student's first score shows them as "to check").
+Time limit: the timer runs from when the student opens the exam; work sent more than 2 minutes after the limit is kept and marked **Late**.
 
 ## Who does what
 | Role | Created by | Signs in with | Can do |

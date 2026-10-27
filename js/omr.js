@@ -18,8 +18,8 @@ export const isAuto = (t) => t === "mc" || t === "tf";
 /** Exams made before this version only had a `key` array: treat them as all multiple choice. */
 export function itemsOf(ex) {
   if (Array.isArray(ex.items) && ex.items.length)
-    return ex.items.map((x) => ({ type: x.type || "mc", key: x.key || "", pts: +x.pts > 0 ? +x.pts : 1 }));
-  return (ex.key || []).map((k) => ({ type: "mc", key: k, pts: 1 }));
+    return ex.items.map((x) => ({ type: x.type || "mc", key: x.key || "", pts: +x.pts > 0 ? +x.pts : 1, q: x.q || "", opts: Array.isArray(x.opts) ? x.opts : [] }));
+  return (ex.key || []).map((k) => ({ type: "mc", key: k, pts: 1, q: "", opts: [] }));
 }
 /** The bubbles an item has, in print order. */
 export const lettersOf = (item, ex) =>
@@ -93,7 +93,7 @@ export function sheetSVG(ex, o = {}) {
     } else if (it.type === "ident") s += Ln(x1 - lay.r, y + lay.r * 0.7, colEnd, y + lay.r * 0.7);
     else s += T(x1 - lay.r, y + lf * 0.35, Math.min(2.3, lf + 0.4), "Essay - separate paper", "start", 400, "#555");
   });
-  return s + T(cx, 211.5, 2.2, `${ex.title}  |  Exam ID ${ex.id || ""}  |  ARK sheet v3`, "middle", 400, "#555") + "</svg>";
+  return s + "</svg>";
 }
 
 /* ---------- scanner ---------- */
@@ -177,6 +177,10 @@ export function scanSheet(g, w, h, ex, ctx) {
   return { answers, flags };
 }
 
+/** Identification answers: ignore case, accents, punctuation and extra spaces. The teacher may list several accepted answers separated by | . */
+export const normText = (s) => String(s || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ").trim();
+export const identMatches = (item, text) => !!(item.type === "ident" && item.key && normText(text) && String(item.key).split("|").some((k) => normText(k) && normText(k) === normText(text)));
+
 /* ---------- scoring ----------
    answers[i]: "" blank, "*" more than one bubble, or the letter.
    manual[i]: points awarded by the teacher for identification/essay items, or null = not checked yet. */
@@ -200,7 +204,7 @@ export function score(ex, answers = [], manual = []) {
   return { correct, wrong, blank, multi, pending, total: items.length, points, maxPoints: max, pct, final: pending === 0, pass: pending === 0 && pct >= (ex.passing || 75), missed };
 }
 /** Short text for one missed item, e.g. "#3 B>C", "#7 blank>A", "#21 0/2". */
-export function missedText(m) {
-  if (m.type === "mc" || m.type === "tf") return `#${m.i + 1} ${m.given === "" ? "blank" : m.given === "*" ? "multi" : m.given} → ${m.key}`;
+export function missedText(m, hideKey) {
+  if (m.type === "mc" || m.type === "tf") return hideKey ? `#${m.i + 1}` : `#${m.i + 1} ${m.given === "" ? "blank" : m.given === "*" ? "multi" : m.given} → ${m.key}`;
   return `#${m.i + 1} ${m.awarded}/${m.pts}`;
 }

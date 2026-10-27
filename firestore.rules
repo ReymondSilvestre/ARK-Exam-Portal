@@ -28,6 +28,26 @@ service cloud.firestore {
         || (exists(/databases/$(database)/documents/teacherLinks/$(me().studentId + '_' + ownerUid))
             && (classId == '' || exists(/databases/$(database)/documents/enrollments/$(me().studentId + '_' + classId)))));
     }
+    // Online exams: the student's locked answers and the time the exam was opened
+    function subOf(id) { return get(/databases/$(database)/documents/examSubmissions/$(id)).data; }
+    function attOf(id) { return get(/databases/$(database)/documents/examAttempts/$(id)).data; }
+    // A student may post ONE online result, and only for answers already locked in examSubmissions (the answers must be identical).
+    // `manual` is not allowed here: only the teacher can award identification / essay points.
+    function studentMayPost(id) {
+      return isStudent()
+        && request.resource.data.keys().hasOnly(['ownerUid','schoolId','examId','studentId','studentName','studentNumber','classId','className','answers',
+             'correct','wrong','blank','multi','pending','total','points','maxPoints','pct','final','pass','teacherName','examTitle','subject','term','passingPct',
+             'missedList','via','startedAt','submittedAt','scannedAt','reviewedFlags'])
+        && request.resource.data.via == 'online'
+        && request.resource.data.studentId == me().studentId
+        && id == request.resource.data.examId + '_' + me().studentId
+        && request.resource.data.schoolId == me().schoolId
+        && request.resource.data.ownerUid == subOf(id).ownerUid
+        && request.resource.data.answers == subOf(id).answers
+        && request.resource.data.submittedAt == subOf(id).submittedAt
+        && request.resource.data.startedAt == attOf(id).startedAt
+        && request.resource.data.scannedAt == request.time;
+    }
     // READS: a document that does not exist yet has resource == null (the scanner looks before it saves).
     function mayRead()   { return resource == null || resource.data.ownerUid == request.auth.uid; }
     function owns()      { return resource.data.ownerUid == request.auth.uid; }
@@ -174,7 +194,7 @@ service cloud.firestore {
     match /scanResults/{id} {
       allow read:   if (isStaff() && mayRead()) || (isAdmin() && inMySchool())
                     || (isStudent() && resource.data.studentId == me().studentId);
-      allow create: if isStaff() && mine() && sameSchool();
+      allow create: if (isStaff() && mine() && sameSchool()) || studentMayPost(id);
       allow update: if isStaff() && owns() && sameOwner();
       allow delete: if isStaff() && owns();
     }
@@ -194,6 +214,57 @@ service cloud.firestore {
       allow create: if isStaff() && mine();
       allow update: if isStaff() && owns() && sameOwner();
       allow delete: if isStaff() && owns();
+    }
+
+    /* ---------------- online exams ---------------- */
+    // examPapers: the student-readable copy of an online exam (questions and choices, NEVER the answer key).
+    // The key lives in `examinations` (teacher only) and in `examKeys` (students may read it only AFTER they have submitted).
+    match /examPapers/{id} {
+      allow read:   if (isStaff() && mayRead()) || (isAdmin() && inMySchool())
+                    || (studentSees(resource.data.ownerUid, resource.data.classId) && resource.data.open == true);
+      allow create: if isStaff() && mine() && sameSchool();
+      allow update: if isStaff() && owns() && sameOwner();
+      allow delete: if isStaff() && owns();
+    }
+    match /examKeys/{id} {
+      allow read:   if (isStaff() && mayRead()) || (isStudent() && exists(/databases/$(database)/documents/examSubmissions/$(id + '_' + me().studentId)));
+      allow create: if isStaff() && mine() && sameSchool();
+      allow update: if isStaff() && owns() && sameOwner();
+      allow delete: if isStaff() && owns();
+    }
+    // examSubmissions: the student's answers, written once and locked (no update). Document id = examId_studentId.
+    match /examSubmissions/{id} {
+      allow read:   if (isStaff() && mayRead()) || (isStudent() && (resource == null || resource.data.studentId == me().studentId));
+      allow create: if isStudent()
+        && request.resource.data.keys().hasOnly(['examId','studentId','studentUid','ownerUid','schoolId','answers','submittedAt'])
+        && request.resource.data.studentId == me().studentId
+        && request.resource.data.studentUid == request.auth.uid
+        && id == request.resource.data.examId + '_' + me().studentId
+        && request.resource.data.schoolId == me().schoolId
+        && request.resource.data.submittedAt == request.time
+        && request.resource.data.answers is list && request.resource.data.answers.size() <= 100
+        && get(/databases/$(database)/documents/examPapers/$(request.resource.data.examId)).data.open == true
+        && get(/databases/$(database)/documents/examPapers/$(request.resource.data.examId)).data.ownerUid == request.resource.data.ownerUid
+        && studentSees(request.resource.data.ownerUid, get(/databases/$(database)/documents/examPapers/$(request.resource.data.examId)).data.classId)
+        && exists(/databases/$(database)/documents/examAttempts/$(id));
+      allow update: if false;
+      allow delete: if isStaff() && owns();   // "Retake"
+    }
+    // examAttempts: written when a student opens an exam (server time), so the time limit cannot be restarted. Document id = examId_studentId.
+    match /examAttempts/{id} {
+      allow read:   if (isStaff() && mayRead()) || (isStudent() && (resource == null || resource.data.studentId == me().studentId));
+      allow create: if isStudent()
+        && request.resource.data.keys().hasOnly(['examId','studentId','studentUid','ownerUid','schoolId','startedAt'])
+        && request.resource.data.studentId == me().studentId
+        && request.resource.data.studentUid == request.auth.uid
+        && id == request.resource.data.examId + '_' + me().studentId
+        && request.resource.data.schoolId == me().schoolId
+        && request.resource.data.startedAt == request.time
+        && get(/databases/$(database)/documents/examPapers/$(request.resource.data.examId)).data.open == true
+        && get(/databases/$(database)/documents/examPapers/$(request.resource.data.examId)).data.ownerUid == request.resource.data.ownerUid
+        && studentSees(request.resource.data.ownerUid, get(/databases/$(database)/documents/examPapers/$(request.resource.data.examId)).data.classId);
+      allow update: if false;
+      allow delete: if isStaff() && owns();   // "Retake": the teacher lets the student start over
     }
 
     /* ---------------- other teacher-owned data ---------------- */

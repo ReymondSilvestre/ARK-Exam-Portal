@@ -90,12 +90,14 @@ exports.adminDeleteUser = onCall(async (req) => {
       const a = s.data().accountUid;
       if (a) { await dropAuth(a); await db.doc(`users/${a}`).delete().catch(() => {}); }
     }
-    for (const c of ["scanResults", "moduleChunks", "modules", "examinations", "answerKeys", "answerSheets", "enrollments", "teacherLinks", "classCodes", "students", "classes"])
+    for (const c of ["scanResults", "examAttempts", "examSubmissions", "examKeys", "examPapers", "moduleChunks", "modules", "examinations", "answerKeys", "answerSheets", "enrollments", "teacherLinks", "classCodes", "students", "classes"])
       await deleteAll(db.collection(c).where("ownerUid", "==", uid));
   } else if (t.role === "student" && t.studentId) {
     await db.doc(`students/${t.studentId}`).update({ accountUid: admin.firestore.FieldValue.delete() }).catch(() => {});
     await deleteAll(db.collection("enrollments").where("studentId", "==", t.studentId));
     await deleteAll(db.collection("teacherLinks").where("studentId", "==", t.studentId));
+    await deleteAll(db.collection("examAttempts").where("studentId", "==", t.studentId));
+    await deleteAll(db.collection("examSubmissions").where("studentId", "==", t.studentId));
   }
   await dropAuth(uid);
   await db.doc(`users/${uid}`).delete();

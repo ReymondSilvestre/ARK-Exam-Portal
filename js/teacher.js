@@ -5,7 +5,7 @@ import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.
 import { getAuth, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 import { firebaseConfig } from "./firebase-config.js";
-import { TYPES, TYPE_SHORT, TERMS, termRank, isAuto, itemsOf, lettersOf, MAX_ITEMS, sheetSVG, scanSheet, score, missedText } from "./omr.js";
+import { TYPES, TYPE_SHORT, TERMS, termRank, isAuto, itemsOf, lettersOf, MAX_ITEMS, sheetSVG, scanSheet, score, missedText, identMatches } from "./omr.js";
 import { CHUNK, MAX_BYTES, sizeText, b64, safeUrl, openModule } from "./files.js";
 
 const $ = (id) => document.getElementById(id);
@@ -60,19 +60,30 @@ function render() {
     (S.classes.map((c) => `<tr><td>${esc(c.name)}</td><td>${c.code ? `<code class="cc">${esc(c.code)}</code>` : "-"}</td><td>${S.home.filter((s) => s.classId === c.id).length}</td><td>${S.joins.filter((j) => j.classId === c.id).length}</td>
       <td class="actions"><button class="btn small" data-code="${esc(c.id)}">${c.code ? "New code" : "Create code"}</button></td></tr>`).join("") || "<tr><td colspan=5>No sections yet.</td></tr>");
 
-  const st = S.students.filter((s) => s.classId === $("stClass").value).sort(byName);
-  $("stTbl").innerHTML = "<tr><th>Exam ID No.</th><th>Name (Last, First M.I.)</th><th>Birthday</th><th>Age</th><th>Login</th><th></th></tr>" +
-    (st.map((s) => s.joined ? `<tr><td>${esc(s.number)}</td><td>${esc(s.name)}</td><td>-</td><td></td><td><span class="badge active">Joined by code</span></td>
+  keep("stFSec", `<option value="">All sections</option>` + sec);
+  const fsec = stF.sec === undefined ? $("stClass").value : stF.sec; $("stFSec").value = fsec;
+  const stCmp = { az: byName, za: (x, y) => byName(y, x), id: (x, y) => String(x.number).localeCompare(String(y.number), undefined, { numeric: true }) }[$("stFSort").value] || byName;
+  const stRow = (s) => s.joined ? `<tr><td>${esc(s.number)}</td><td>${esc(s.name)}</td><td>-</td><td></td><td><span class="badge active">Joined by code</span></td>
       <td class="actions"><button class="btn small danger" data-unjoin="${esc(s.enrollId)}">Remove from classroom</button></td></tr>`
       : `<tr><td>${esc(s.number)}</td><td>${esc(s.name)}</td><td>${esc(bd(s.birthday))}</td><td>${ageOf(s.birthday)}</td>
       <td>${s.accountUid ? '<span class="badge active">Has login</span>' : '<span class="badge warn">No login yet</span>'}</td>
       <td class="actions">${s.accountUid ? `<button class="btn small" data-pw="${esc(s.id)}">Reset password</button>` : `<button class="btn small" data-mk="${esc(s.id)}">Create login</button>`}
-      <button class="btn small danger" data-rm="${esc(s.id)}">Remove</button></td></tr>`).join("") || "<tr><td colspan=6>No students in this section.</td></tr>");
+      <button class="btn small danger" data-rm="${esc(s.id)}">Remove</button></td></tr>`;
+  let stBody = "";
+  for (const c of fsec ? S.classes.filter((x) => x.id === fsec) : S.classes) { // "All sections": one group per section, names sorted inside each
+    const list = S.students.filter((s) => s.classId === c.id).sort(stCmp);
+    if (!fsec && list.length) stBody += `<tr class="grp"><td colspan="6">${esc(c.name)} - ${list.length} student${list.length === 1 ? "" : "s"}</td></tr>`;
+    stBody += list.map(stRow).join("");
+  }
+  $("stTbl").innerHTML = "<tr><th>Exam ID No.</th><th>Name (Last, First M.I.)</th><th>Birthday</th><th>Age</th><th>Login</th><th></th></tr>" +
+    (stBody || `<tr><td colspan="6">No students ${fsec ? "in this section" : "yet"}.</td></tr>`);
 
   const mix = (e) => { const c = {}; itemsOf(e).forEach((i) => (c[i.type] = (c[i.type] || 0) + 1)); return Object.entries(c).map(([t, n]) => `${TYPE_SHORT[t]} ${n}`).join(", "); };
   const exs = S.exams.filter((e) => !$("exFilter").value || (e.term || "") === $("exFilter").value);
-  $("exTbl").innerHTML = "<tr><th>Title</th><th>Section</th><th>Date</th><th>Items</th><th>Points</th><th>Pass %</th><th></th></tr>" +
-    (groupRows(exs, 7, (e) => `<tr><td>${esc(e.title)}</td><td>${esc(e.className)}</td><td>${esc(e.date)}</td><td class="wrapcell">${itemsOf(e).length} (${esc(mix(e))})</td><td>${itemsOf(e).reduce((a, b) => a + b.pts, 0)}</td><td>${e.passing}</td><td class="actions"><button class="btn small" data-edit="${esc(e.id)}">Edit key</button><button class="btn small danger" data-del="${esc(e.id)}">Delete</button></td></tr>`) || "<tr><td colspan=7>No examinations yet.</td></tr>");
+  $("exTbl").innerHTML = "<tr><th>Title</th><th>Section</th><th>Date</th><th>Items</th><th>Points</th><th>Pass %</th><th>Mode</th><th></th></tr>" +
+    (groupRows(exs, 8, (e) => `<tr><td>${esc(e.title)}</td><td>${esc(e.className)}</td><td>${esc(e.date)}</td><td class="wrapcell">${itemsOf(e).length} (${esc(mix(e))})</td><td>${itemsOf(e).reduce((a, b) => a + b.pts, 0)}</td><td>${e.passing}</td>
+      <td>${e.online ? `<span class="badge ${e.open ? "active" : "warn"}">Online - ${e.open ? "open" : "closed"}</span>${e.timeLimit ? ` <span class="muted fine">${e.timeLimit} min</span>` : ""}` : "Paper"}</td>
+      <td class="actions">${e.online ? `<button class="btn small ${e.open ? "" : "primary"}" data-pub="${esc(e.id)}">${e.open ? "Close" : "Open"}</button>` : ""}<button class="btn small" data-edit="${esc(e.id)}">Edit</button><button class="btn small danger" data-del="${esc(e.id)}">Delete</button></td></tr>`) || "<tr><td colspan=8>No examinations yet.</td></tr>");
 
   const mds = S.modules.filter((m) => !$("mdFilter").value || (m.term || "") === $("mdFilter").value);
   $("mdTbl").innerHTML = "<tr><th>Title</th><th>Section</th><th>File</th><th>Uploaded</th><th></th></tr>" +
@@ -87,7 +98,21 @@ function show(t) {
   if (t === "results") loadResults(); if (t === "sheet") drawSheet(); if (t === "scan") fillStudents();
 }
 $("tabs").onclick = (e) => { const b = e.target.closest("button"); if (b) show(b.dataset.t); };
-$("stClass").onchange = render;
+const stF = { sec: undefined }; // undefined = follow the Section box above the form
+$("stClass").onchange = () => { stF.sec = $("stClass").value; render(); };
+$("stFSec").onchange = () => { stF.sec = $("stFSec").value; if (stF.sec) $("stClass").value = stF.sec; render(); };
+$("stFSort").onchange = render;
+$("stFilter").querySelector("[data-reset]").onclick = () => { stF.sec = ""; $("stFSort").value = "az"; render(); };
+$("reFilter").querySelector("[data-reset]").onclick = () => { $("reSec").value = ""; $("reSort").value = "sec_name"; renderResults(); };
+/** Filter icon: opens a small panel under the button; closes on outside click or Escape. */
+function popover(root) {
+  const btn = root.querySelector("button"), panel = root.querySelector(".fpanel");
+  const set = (open) => { panel.hidden = !open; btn.setAttribute("aria-expanded", String(open)); };
+  btn.onclick = (e) => { e.stopPropagation(); set(panel.hidden); };
+  document.addEventListener("click", (e) => { if (!root.contains(e.target)) set(false); });
+  root.addEventListener("keydown", (e) => { if (e.key === "Escape") { set(false); btn.focus(); } });
+}
+document.querySelectorAll(".fpop").forEach(popover);
 
 /* ---------- sections and students ---------- */
 const CODE_CH = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I so codes are easy to read aloud
@@ -252,20 +277,24 @@ $("stCsv").onchange = (e) => run(async () => {
 
 /* ---------- examinations: collapsible key per number ---------- */
 const D = { items: [], editId: null };
-const mkItem = () => ({ type: "mc", key: "", pts: 1 });
+const mkItem = () => ({ type: "mc", key: "", pts: 1, q: "", opts: [] });
 const box = $("exItems");
 $("exBulkType").innerHTML = Object.entries(TYPES).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
 const keyName = (k) => (k === "T" ? "True" : k === "F" ? "False" : k);
 
 function rowHTML(i, open) {
-  const it = D.items[i], auto = isAuto(it.type);
-  const chips = it.type === "tf" ? ["T", "F"] : it.type === "mc" ? "ABCDE".slice(0, +$("exCh").value).split("") : [];
+  const it = D.items[i], auto = isAuto(it.type), online = $("exOnline").checked, nCh = +$("exCh").value;
+  const chips = it.type === "tf" ? ["T", "F"] : it.type === "mc" ? "ABCDE".slice(0, nCh).split("") : [];
   const label = auto ? (it.key ? "Key: " + keyName(it.key) : "No key yet") : "Teacher checks";
+  const refLbl = it.type === "ident" ? (online ? "Accepted answer(s): separate with | . A student answer that matches is marked correct automatically; any other waits for your check" : "Reference answer (optional, for your own checking)") : "Rubric or notes (optional)";
   const body = auto
     ? `<div><span class="lbl">Correct answer</span><div class="chips" role="group" aria-label="Correct answer for number ${i + 1}">${chips.map((c) => `<button type="button" class="chip ${it.key === c ? "on" : ""}" data-k="${c}" aria-pressed="${it.key === c}">${keyName(c)}</button>`).join("")}</div></div>`
-    : `<label>${it.type === "ident" ? "Reference answer (optional, for your own checking)" : "Rubric or notes (optional)"}<input data-f="key" value="${esc(it.key)}" maxlength="200"></label>`;
+    : `<label>${refLbl}<input data-f="key" value="${esc(it.key)}" maxlength="200"></label>`;
+  // what the student reads on screen (online exams only)
+  const qBox = online ? `<label class="wide">${it.type === "tf" ? "Statement" : it.type === "essay" ? "Essay prompt" : "Question"}<textarea data-f="q" rows="2" maxlength="1000">${esc(it.q || "")}</textarea></label>` : "";
+  const oBox = online && it.type === "mc" ? `<div class="wide"><span class="lbl">Choices</span>${"ABCDE".slice(0, nCh).split("").map((L, j) => `<label class="optin"><b>${L}</b><input data-f="opt" data-j="${j}" maxlength="300" value="${esc((it.opts || [])[j] || "")}"></label>`).join("")}</div>` : "";
   return `<details class="it" data-i="${i}" ${open ? "open" : ""}><summary class="${auto && !it.key ? "miss" : ""}"><b>${i + 1}</b><span class="tp">${TYPE_SHORT[it.type]}</span><span class="ky">${esc(label)}</span><span class="pt">${it.pts} pt${it.pts === 1 ? "" : "s"}</span></summary>
-  <div class="ibody"><label>Type<select data-f="type">${Object.entries(TYPES).map(([k, v]) => `<option value="${k}" ${k === it.type ? "selected" : ""}>${v}</option>`).join("")}</select></label>${body}
+  <div class="ibody">${qBox}${oBox}<label>Type<select data-f="type">${Object.entries(TYPES).map(([k, v]) => `<option value="${k}" ${k === it.type ? "selected" : ""}>${v}</option>`).join("")}</select></label>${body}
   <label>Points<input data-f="pts" type="number" min="0.5" max="100" step="0.5" value="${it.pts}"></label></div></details>`;
 }
 function drawItems() {
@@ -305,11 +334,14 @@ box.addEventListener("input", (e) => {
   const f = e.target.dataset.f, d = e.target.closest("details"); if (!f || !d) return; const i = +d.dataset.i, it = D.items[i];
   if (f === "pts") { it.pts = Math.max(0.5, Math.min(100, +e.target.value || 1)); d.querySelector(".pt").textContent = `${it.pts} pt${it.pts === 1 ? "" : "s"}`; }
   if (f === "key") it.key = e.target.value;
+  if (f === "q") it.q = e.target.value;
+  if (f === "opt") { it.opts = it.opts || []; it.opts[+e.target.dataset.j] = e.target.value; }
 });
+$("exOnline").onchange = () => { $("exOnlineBox").hidden = !$("exOnline").checked; drawItems(); };
 
 
 /** What the student page needs, saved on each result so students never need to read the exam (and its answer key). */
-const extras = (ex, missed) => ({ teacherName: profile.displayName, examTitle: ex.title, subject: ex.subject || "", term: ex.term || "", passingPct: ex.passing || 75, missedList: missed.map(missedText) });
+const extras = (ex, missed) => ({ teacherName: profile.displayName, examTitle: ex.title, subject: ex.subject || "", term: ex.term || "", passingPct: ex.passing || 75, missedList: missed.map((m) => missedText(m, ex.online && ex.showAnswers === false)) });
 async function rescore(exId, data) {
   const ex = { id: exId, ...data }, rs = await load("scanResults", where("examId", "==", exId));
   for (let i = 0; i < rs.length; i += 400) {
@@ -318,11 +350,37 @@ async function rescore(exId, data) {
     await b.commit();
   }
 }
+/** The student-readable copy of an online exam: questions and choices only. The answer key stays in `examinations`, which students cannot read. */
+const paperOf = (data) => ({ ownerUid: user.uid, schoolId: SID, classId: data.classId, className: data.className, title: data.title, subject: data.subject || "", term: data.term || "",
+  teacherName: profile.displayName, instructions: data.instructions || "", link: data.link || "", timeLimit: data.timeLimit || 0, choices: data.choices, n: data.n, totalPts: data.totalPts,
+  showAnswers: data.showAnswers !== false, open: !!data.open, items: data.items.map(({ type, pts, q, opts }) => ({ type, pts, q: q || "", opts: opts || [] })), updatedAt: serverTimestamp() });
+async function syncPaper(id, data) {
+  if (data.online) {
+    await setDoc(doc(db, "examPapers", id), paperOf(data));
+    // The key copy: firestore.rules let a student read it only AFTER their answers are submitted and locked.
+    await setDoc(doc(db, "examKeys", id), { ownerUid: user.uid, schoolId: SID, choices: data.choices, passing: data.passing, showAnswers: data.showAnswers !== false,
+      items: data.items.map(({ type, key, pts }) => ({ type, key, pts })), updatedAt: serverTimestamp() });
+  } else { // not an online exam (or never was): nothing to remove
+    await deleteDoc(doc(db, "examPapers", id)).catch(() => {}); await deleteDoc(doc(db, "examKeys", id)).catch(() => {});
+  }
+}
+const togglePub = (id) => run(async () => {
+  const ex = examOf(id); if (!ex || !ex.online) return; const open = !ex.open, b = writeBatch(db);
+  b.update(doc(db, "examinations", id), { open, updatedAt: serverTimestamp() });
+  b.set(doc(db, "examPapers", id), paperOf({ ...ex, open }));
+  await b.commit(); await refresh();
+  flash(open ? `"${ex.title}" is open. Students can see it and answer now.` : `"${ex.title}" is closed. Students can no longer submit.`, 1);
+});
 const deleteExam = (id) => run(async () => {
   const ex = examOf(id); if (!ex) return;
   const rs = await load("scanResults", where("examId", "==", id));
   if (!confirm(`Delete the examination "${ex.title}"${rs.length ? ` AND its ${rs.length} scanned result${rs.length === 1 ? "" : "s"}` : ""}? This cannot be undone.`)) return;
   for (let i = 0; i < rs.length; i += 400) { const b = writeBatch(db); rs.slice(i, i + 400).forEach((r) => b.delete(doc(db, "scanResults", r.id))); await b.commit(); }
+  const at = await load("examAttempts", where("examId", "==", id));
+  for (let i = 0; i < at.length; i += 400) { const b = writeBatch(db); at.slice(i, i + 400).forEach((r) => b.delete(doc(db, "examAttempts", r.id))); await b.commit(); }
+  const sb = await load("examSubmissions", where("examId", "==", id));
+  for (let i = 0; i < sb.length; i += 400) { const b = writeBatch(db); sb.slice(i, i + 400).forEach((r) => b.delete(doc(db, "examSubmissions", r.id))); await b.commit(); }
+  await deleteDoc(doc(db, "examPapers", id)).catch(() => {}); await deleteDoc(doc(db, "examKeys", id)).catch(() => {});
   await deleteDoc(doc(db, "examinations", id));
   if (D.editId === id) resetBuilder();
   await refresh(); flash(`"${ex.title}" was deleted.`, 1);
@@ -330,34 +388,52 @@ const deleteExam = (id) => run(async () => {
 
 function resetBuilder() {
   D.editId = null; D.items = []; ["exTitle", "exSub", "exDate"].forEach((i) => ($(i).value = "")); $("exPass").value = 75; $("exCh").value = 5; $("exTerm").value = store.get("ark.term") || TERMS[0];
+  $("exOnline").checked = false; $("exOnlineBox").hidden = true; $("exTime").value = 0; $("exInst").value = ""; $("exLink").value = ""; $("exShow").checked = true; $("exOpen").checked = false;
   $("exHead").textContent = "New examination"; $("exAdd").textContent = "Save exam"; $("exCancel").hidden = true; resize(20);
 }
 $("exCancel").onclick = resetBuilder;
 $("exTbl").onclick = (e) => {
   const d = e.target.closest("[data-del]"); if (d) return deleteExam(d.dataset.del);
+  const pb = e.target.closest("[data-pub]"); if (pb) return togglePub(pb.dataset.pub);
   const b = e.target.closest("[data-edit]"); if (!b) return; const ex = examOf(b.dataset.edit); if (!ex) return;
   D.editId = ex.id; D.items = itemsOf(ex).map((x) => ({ ...x }));
   $("exTitle").value = ex.title; $("exTerm").value = ex.term || TERMS[0]; $("exSub").value = ex.subject || ""; $("exClass").value = ex.classId || ""; $("exDate").value = ex.date || "";
-  $("exCh").value = ex.choices || 5; $("exPass").value = ex.passing || 75; $("exN").value = D.items.length; drawItems();
+  $("exCh").value = ex.choices || 5; $("exPass").value = ex.passing || 75; $("exN").value = D.items.length;
+  $("exOnline").checked = !!ex.online; $("exOnlineBox").hidden = !ex.online; $("exTime").value = ex.timeLimit || 0; $("exInst").value = ex.instructions || ""; $("exLink").value = ex.link || ""; $("exShow").checked = ex.showAnswers !== false; $("exOpen").checked = !!ex.open;
+  drawItems();
   $("exHead").textContent = "Edit examination"; $("exAdd").textContent = "Update exam"; $("exCancel").hidden = false; scrollTo({ top: 0, behavior: "smooth" });
   flash("Editing. Saved results are re-scored automatically with the new key.", 1);
 };
 $("exAdd").onclick = () => run(async () => {
-  const c = clsOf($("exClass").value), title = $("exTitle").value.trim();
+  const c = clsOf($("exClass").value), title = $("exTitle").value.trim(), online = $("exOnline").checked, link = $("exLink").value.trim(), nCh = +$("exCh").value;
   if (!title) return flash("Enter a title for the examination.");
   const missing = D.items.map((it, i) => (isAuto(it.type) && !it.key ? i : -1)).filter((i) => i >= 0);
   if (missing.length) {
     missing.forEach((i) => (box.children[i].open = true)); box.children[missing[0]].scrollIntoView({ block: "center", behavior: "smooth" });
     return flash(`Choose the correct answer for number ${missing.length > 8 ? missing.slice(0, 8).map((i) => i + 1).join(", ") + "..." : missing.map((i) => i + 1).join(", ")}.`);
   }
-  const items = D.items.map((x) => ({ type: x.type, key: isAuto(x.type) ? x.key : String(x.key || "").trim(), pts: +x.pts > 0 ? +x.pts : 1 }));
+  if (link && !safeUrl(link)) return flash("The exam paper link must start with http:// or https://");
+  if (online && !link) { // without a paper link, students can only see what is typed here
+    const bad = D.items.findIndex((it) => !String(it.q || "").trim() || (it.type === "mc" && Array.from({ length: nCh }, (_, j) => String((it.opts || [])[j] || "").trim()).some((x) => !x)));
+    if (bad >= 0) {
+      box.children[bad].open = true; box.children[bad].scrollIntoView({ block: "center", behavior: "smooth" });
+      return flash(`Number ${bad + 1} needs its ${D.items[bad].type === "mc" ? "question and all its choices" : "question"}. Or paste a link to your exam paper above, so students only choose their answers.`);
+    }
+  }
+  const items = D.items.map((x) => ({ type: x.type, key: isAuto(x.type) ? x.key : String(x.key || "").trim(), pts: +x.pts > 0 ? +x.pts : 1,
+    q: String(x.q || "").trim().slice(0, 1000), opts: x.type === "mc" ? Array.from({ length: nCh }, (_, j) => String((x.opts || [])[j] || "").trim().slice(0, 300)) : [] }));
   const data = { schoolId: SID, title, term: $("exTerm").value, subject: $("exSub").value.trim(), classId: c ? c.id : "", className: c ? c.name : "All sections", date: $("exDate").value,
-    n: items.length, choices: +$("exCh").value, passing: +$("exPass").value || 75, items, totalPts: items.reduce((a, b) => a + b.pts, 0) };
-  if (D.editId) await updateDoc(doc(db, "examinations", D.editId), { ...data, key: deleteField(), updatedAt: serverTimestamp() });
-  else await addDoc(collection(db, "examinations"), { ownerUid: user.uid, ...data, createdAt: serverTimestamp() });
+    n: items.length, choices: nCh, passing: +$("exPass").value || 75, items, totalPts: items.reduce((a, b) => a + b.pts, 0),
+    online, open: online && $("exOpen").checked, timeLimit: online ? Math.max(0, Math.min(600, Math.floor(+$("exTime").value) || 0)) : 0,
+    instructions: $("exInst").value.trim().slice(0, 1000), link, showAnswers: $("exShow").checked };
+  let id = D.editId;
+  if (id) await updateDoc(doc(db, "examinations", id), { ...data, key: deleteField(), updatedAt: serverTimestamp() });
+  else id = (await addDoc(collection(db, "examinations"), { ownerUid: user.uid, ...data, createdAt: serverTimestamp() })).id;
+  await syncPaper(id, data);
   store.set("ark.term", data.term);
   if (D.editId) await rescore(D.editId, data);
-  const was = D.editId; resetBuilder(); await refresh(); flash(was ? "Examination updated." : "Examination saved.", 1);
+  const was = D.editId; resetBuilder(); await refresh();
+  flash(was ? "Examination updated." : online ? (data.open ? "Examination saved and open for students." : "Examination saved. Press Open in the list when you want students to see it.") : "Examination saved.", 1);
 });
 resetBuilder();
 
@@ -458,7 +534,12 @@ function drawReview() {
     if (it.type === "ident") return `<div class="man ${m == null ? "pend" : ""}">${n}<select data-i="${i}" data-k="m" aria-label="Identification ${i + 1}"><option value="">Ident: check</option><option value="1" ${m != null && m >= it.pts ? "selected" : ""}>Correct</option><option value="0" ${m === 0 ? "selected" : ""}>Wrong</option></select></div>`;
     return `<div class="man ${m == null ? "pend" : ""}">${n}<input type="number" data-i="${i}" data-k="m" min="0" max="${it.pts}" step="0.5" value="${m ?? ""}" placeholder="Essay /${it.pts}" aria-label="Essay ${i + 1} points"></div>`;
   }).join("");
-  sumUp();
+  drawTyped(); sumUp();
+}
+function drawTyped() {
+  const items = R.items, html = (R.typed || []).map((t, i) => (t && items[i] && !isAuto(items[i].type)
+    ? `<div class="typed"><b>#${i + 1}</b> <span class="muted">${esc(items[i].q || TYPE_SHORT[items[i].type])}</span><p>${esc(t)}</p>${items[i].key ? `<small>${items[i].type === "ident" ? "Accepted" : "Notes"}: ${esc(items[i].key)}</small>` : ""}</div>` : "")).join("");
+  $("typedBox").hidden = !html; $("typedList").innerHTML = html;
 }
 function sumUp() {
   const s = score(R.ex, R.answers, R.manual);
@@ -477,8 +558,10 @@ $("scSave").onclick = () => run(async () => {
   const { missed, ...sc } = score(R.ex, R.answers, R.manual);
   $("scSave").disabled = true;
   try {
-    await setDoc(ref, { ownerUid: user.uid, schoolId: SID, examId: R.ex.id, studentId: stu.id, studentName: stu.name, studentNumber: stu.number, classId: stu.classId, className: stu.className,
-      answers: R.answers, manual: R.manual, ...sc, ...extras(R.ex, missed), reviewedFlags: R.flags.filter(Boolean).length, scannedAt: serverTimestamp() });
+    const payload = { ownerUid: user.uid, schoolId: SID, examId: R.ex.id, studentId: stu.id, studentName: stu.name, studentNumber: stu.number, classId: stu.classId, className: stu.className,
+      answers: R.answers, manual: R.manual, ...sc, ...extras(R.ex, missed), reviewedFlags: R.flags.filter(Boolean).length, scannedAt: serverTimestamp() };
+    if (R.editing) await setDoc(ref, payload, { merge: true }); // keeps the online fields (typed answers, time, "online" mark)
+    else await setDoc(ref, payload);
     flash(`Saved result for ${stu.name}.`, 1); $("review").hidden = true; $("cv").hidden = true;
   } finally { $("scSave").disabled = false; }
 });
@@ -491,6 +574,8 @@ const CMP = {
   score: (a, b) => b.sc.pct - a.sc.pct || a.studentName.localeCompare(b.studentName),
   wrong: (a, b) => b.sc.missed.length - a.sc.missed.length || a.studentName.localeCompare(b.studentName),
   name: (a, b) => a.studentName.localeCompare(b.studentName),
+  name_desc: (a, b) => b.studentName.localeCompare(a.studentName),
+  sec_name_desc: (a, b) => secName(a).localeCompare(secName(b)) || b.studentName.localeCompare(a.studentName),
   id: (a, b) => String(a.studentNumber).localeCompare(String(b.studentNumber), undefined, { numeric: true }),
 };
 const status = (s) => (s.final ? (s.pass ? "Pass" : "Fail") : "To check");
@@ -499,10 +584,20 @@ let VIEW = { ex: null, list: [] };
 async function loadResults() {
   await run(async () => {
     const ex = examOf($("reExam").value); if (!ex) { S.results = []; return renderResults(); }
-    S.results = (await load("scanResults", where("examId", "==", ex.id))).map((r) => {
+    const items = itemsOf(ex);
+    S.results = await Promise.all((await load("scanResults", where("examId", "==", ex.id))).map(async (r) => {
       const stu = S.students.find((s) => s.id === r.studentId); // older results have no section saved
-      return { ...r, classId: r.classId ?? stu?.classId ?? "", className: r.className ?? stu?.className ?? "-", sc: score(ex, r.answers || [], r.manual || []) };
-    });
+      let manual = r.manual || [], late = false;
+      if (r.via === "online") {
+        manual = items.map((_, i) => manual[i] ?? null); let changed = false;
+        items.forEach((it, i) => { if (it.type === "ident" && manual[i] == null && identMatches(it, (r.answers || [])[i])) { manual[i] = it.pts; changed = true; } });
+        const { missed, ...fresh } = score(ex, r.answers || [], manual);
+        if (changed || fresh.points !== r.points || fresh.pct !== r.pct || fresh.final !== r.final) // save the corrected score so the student sees it too
+          await updateDoc(doc(db, "scanResults", r.id), { manual, ...fresh, ...extras(ex, missed) }).catch(() => {});
+        late = +ex.timeLimit > 0 && !!r.startedAt?.toMillis && !!r.submittedAt?.toMillis && r.submittedAt.toMillis() - r.startedAt.toMillis() > (ex.timeLimit * 60 + 120) * 1000;
+      }
+      return { ...r, manual, late, classId: r.classId ?? stu?.classId ?? "", className: r.className ?? stu?.className ?? "-", sc: score(ex, r.answers || [], manual) };
+    }));
     renderResults();
   });
 }
@@ -514,13 +609,19 @@ function renderResults() {
   const list = S.results.filter((r) => !sec || r.classId === sec).sort(CMP[sort]); VIEW = { ex, list };
   const pcts = list.map((r) => r.sc.pct), avg = pcts.length ? (pcts.reduce((a, b) => a + b, 0) / pcts.length).toFixed(1) : "-";
   $("stats").textContent = list.length ? `Scanned ${list.length} | Average ${avg}% | Highest ${Math.max(...pcts)}% | Lowest ${Math.min(...pcts)}% | Passed ${list.filter((r) => r.sc.pass).length}` : "No results yet for this selection.";
+  const wt = $("waiting");
+  if (ex.online) { // who has not submitted yet
+    const done = new Set(S.results.map((r) => r.studentId)), late = S.students.filter((s) => (!ex.classId || s.classId === ex.classId) && !done.has(s.id)).sort(byName);
+    wt.hidden = false; wt.innerHTML = `<p class="muted fine">Online exam: ${ex.open ? "open" : "closed"}. ${S.results.length} submitted${late.length ? `, ${late.length} not yet.` : ", everyone has submitted."}</p>` +
+      (late.length ? `<details><summary>Not yet submitted (${late.length})</summary><p class="fine">${late.map((s) => esc(s.name) + (ex.classId ? "" : ` <span class="muted">(${esc(s.className)})</span>`)).join("; ")}</p></details>` : "");
+  } else { wt.hidden = true; wt.innerHTML = ""; }
   const grouped = sort.startsWith("sec_"); let last = null, rows = "";
   for (const r of list) {
     if (grouped && secName(r) !== last) { last = secName(r); const g = list.filter((x) => secName(x) === last); rows += `<tr class="grp"><td colspan="9">${esc(last)} - ${g.length} student${g.length === 1 ? "" : "s"}, average ${(g.reduce((a, b) => a + b.sc.pct, 0) / g.length).toFixed(1)}%</td></tr>`; }
     const s = r.sc;
-    rows += `<tr class="${s.final ? "" : "pend"}"><td>${r.rank}</td><td>${esc(r.studentNumber)}</td><td>${esc(r.studentName)}</td><td>${esc(secName(r))}</td><td>${s.points}/${s.maxPoints}</td><td>${s.pct}</td><td>${status(s)}</td>
+    rows += `<tr class="${s.final ? "" : "pend"}"><td>${r.rank}</td><td>${esc(r.studentNumber)}</td><td>${esc(r.studentName)}</td><td>${esc(secName(r))}</td><td>${s.points}/${s.maxPoints}</td><td>${s.pct}</td><td>${status(s)}${r.via === "online" ? ' <span class="badge">Online</span>' : ""}${r.late ? ' <span class="badge warn">Late</span>' : ""}</td>
       <td class="wrapcell">${s.missed.length ? `<b>${s.missed.length}</b> ` + s.missed.map((m) => `<span class="wr">${esc(missedText(m))}</span>`).join("") : "None"}${s.pending ? ` <span class="badge warn">${s.pending} to check</span>` : ""}</td>
-      <td class="actions"><button class="btn small" data-edit="${esc(r.id)}">${s.pending ? "Check" : "Edit"}</button></td></tr>`;
+      <td class="actions"><button class="btn small" data-edit="${esc(r.id)}">${s.pending ? "Check" : "Edit"}</button>${r.via === "online" ? `<button class="btn small danger" data-retake="${esc(r.id)}">Retake</button>` : ""}</td></tr>`;
   }
   $("reTbl").innerHTML = "<tr><th>Rank</th><th>Exam ID No.</th><th>Name</th><th>Section</th><th>Score</th><th>%</th><th>Status</th><th>Wrong answers (student answer → correct)</th><th></th></tr>" + (rows || "<tr><td colspan=9>No results yet.</td></tr>");
   $("items").innerHTML = items.map((it, i) => {
@@ -531,9 +632,16 @@ function renderResults() {
 }
 ["reExam"].forEach((i) => ($(i).onchange = loadResults)); ["reSec", "reSort"].forEach((i) => ($(i).onchange = renderResults));
 $("reTbl").onclick = (e) => {
+  const rt = e.target.closest("[data-retake]");
+  if (rt) return run(async () => {
+    const r = S.results.find((x) => x.id === rt.dataset.retake); if (!r) return;
+    if (!confirm(`Let ${r.studentName} take this exam again? Their submitted answers and score are deleted and they can start over.`)) return;
+    await deleteDoc(doc(db, "scanResults", r.id)); await deleteDoc(doc(db, "examAttempts", r.id)).catch(() => {}); await deleteDoc(doc(db, "examSubmissions", r.id)).catch(() => {});
+    await loadResults(); flash(`${r.studentName} can take the exam again.`, 1);
+  });
   const b = e.target.closest("[data-edit]"); if (!b) return; const r = S.results.find((x) => x.id === b.dataset.edit); if (!r) return;
   const ex = examOf(r.examId), items = itemsOf(ex);
-  R = { ex, items, answers: items.map((_, i) => (r.answers || [])[i] ?? ""), manual: items.map((_, i) => (r.manual || [])[i] ?? null), flags: items.map(() => false) };
+  R = { ex, items, answers: items.map((_, i) => (r.answers || [])[i] ?? ""), manual: items.map((_, i) => (r.manual || [])[i] ?? null), flags: items.map(() => false), typed: items.map((it, i) => (r.via === "online" && !isAuto(it.type) ? String((r.answers || [])[i] || "") : "")), editing: true };
   show("scan"); $("scExam").value = ex.id; $("scSec").value = ""; fillStudents(r.studentId); $("scId").value = r.studentNumber; $("scHint").textContent = "";
   $("cv").hidden = true; $("review").hidden = false; $("reviewNote").hidden = false;
   $("reviewNote").textContent = `Editing the saved result of ${r.studentName}. Mark the items you check by hand, then press Save result.`; drawReview(); scrollTo({ top: 0 });
