@@ -1,4 +1,4 @@
-import { requireRole, logout, db, esc, friendlyError, app, studentEmail, fbPass, defaultStudentPassword, ageOf, fullName } from "./auth.js";
+import { requireRole, logout, db, esc, friendlyError, app, studentEmail, fbPass, defaultStudentPassword, ageOf, fullName, applyBranding } from "./auth.js";
 import { collection, query, where, getDocs, getDoc, doc, setDoc, addDoc, updateDoc, deleteDoc, deleteField, writeBatch, runTransaction, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -9,8 +9,9 @@ import { TYPES, TYPE_SHORT, TERMS, termRank, isAuto, itemsOf, lettersOf, MAX_ITE
 import { CHUNK, MAX_BYTES, sizeText, b64, safeUrl, openModule } from "./files.js";
 
 const $ = (id) => document.getElementById(id);
-const { user, profile } = await requireRole(["teacher", "admin"]); // the IT admin has every teacher feature
+const { user, profile, school } = await requireRole(["teacher", "admin"]); // the IT admin has every teacher feature
 $("who").textContent = profile.displayName; $("out").onclick = logout;
+applyBranding(school);
 if (profile.role === "admin") $("adminLink").hidden = false;
 const SID = profile.schoolId; // every record this teacher creates is stamped with the school
 
@@ -519,7 +520,7 @@ $("mdTbl").onclick = (e) => run(async () => {
 });
 
 /* ---------- answer sheets: 8.5 x 13 in landscape, two per page ---------- */
-$("school").value = store.get("ark.school") || profile.schoolName || ""; $("teacher").value = store.get("ark.teacher") || profile.displayName;
+$("school").value = store.get("ark.school") || school?.displayName || profile.schoolName || ""; $("teacher").value = store.get("ark.teacher") || profile.displayName;
 function drawSheet() {
   const ex = examOf($("shExam").value), f = $("shFor").value; $("shCopiesL").hidden = f !== "blank";
   if (!ex) { $("sheetWrap").innerHTML = "<p class='muted'>Create an examination first.</p>"; $("shInfo").textContent = ""; return; }

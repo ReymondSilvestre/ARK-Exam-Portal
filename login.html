@@ -28,26 +28,14 @@ document.addEventListener("submit", function (e) {
       <button class="btn primary block" id="go">Sign in</button>
     </form>
     <p class="muted fine">No account yet? Your school's IT Administrator creates teacher accounts, and your teacher creates student accounts.</p>
-    <button class="link" id="forgot" type="button">Forgot your password?</button>
   </section>
 
-  <section id="reset" hidden>
-    <h1>Forgot your password?</h1>
-    <p class="muted"><b>Students:</b> ask your teacher to reset it. <b>Teachers:</b> send a request below. Your school's IT Administrator will reset it to the temporary password (birth year + first letter of your last name).</p>
-    <form id="rq" novalidate>
-      <label>School code<input id="rqSchool" autocomplete="off" autocapitalize="characters" required></label>
-      <label>Employee No.<input id="rqEmp" autocomplete="off" required></label>
-      <button class="btn primary block" id="rqGo">Send request to IT Admin</button>
-    </form>
-    <button class="link" id="back2" type="button">Back to sign in</button>
-  </section>
 </main>
 <script type="module">
-import { auth, login, requestPasswordReset, friendlyError, destinationFor } from "./js/auth.js";
+import { auth, login, friendlyError, destinationFor } from "./js/auth.js";
 window.__arkReady = true;
 const $ = (id) => document.getElementById(id), msg = $("msg");
 const show = (t, ok) => { msg.textContent = t; msg.hidden = false; msg.className = "notice " + (ok ? "ok" : "err"); };
-const view = (v) => { for (const s of ["signin", "reset"]) $(s).hidden = s !== v; msg.hidden = true; };
 if (new URLSearchParams(location.search).has("denied")) show("Your account does not have access to that page, or your school is not active.");
 try { $("school").value = localStorage.getItem("ark.schoolCode") || ""; } catch {}
 
@@ -57,22 +45,5 @@ $("f").addEventListener("submit", async (e) => {
   try { c = await login($("email").value, $("pw").value, $("school").value); } catch (err) { show(friendlyError(err)); $("go").disabled = false; return; }
   try { try { localStorage.setItem("ark.schoolCode", $("school").value.trim().toUpperCase()); } catch {} location.href = await destinationFor(c.user); }
   catch (err) { await auth.signOut(); show(err.message); $("go").disabled = false; }
-});
-$("forgot").onclick = () => { $("rqSchool").value = $("school").value.trim().toUpperCase(); $("rqEmp").value = $("email").value.includes("@") ? "" : $("email").value.trim(); view("reset"); };
-$("back2").onclick = () => view("signin");
-
-$("rq").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const sc = $("rqSchool").value.trim().toUpperCase(), emp = $("rqEmp").value.trim();
-  if (!sc || !emp) return show("Enter your school code and Employee No.");
-  const key = "resetReq:" + sc + ":" + emp.toLowerCase();
-  try { if (Date.now() - Number(localStorage.getItem(key) || 0) < 600000) return show("You already sent a request a moment ago. Please wait for the IT Administrator.", true); } catch {}
-  $("rqGo").disabled = true;
-  try {
-    await requestPasswordReset(sc, emp);
-    try { localStorage.setItem(key, String(Date.now())); } catch {}
-    view("signin"); show("Request sent. Your IT Administrator will reset your password to the temporary one.", true);
-  } catch (err) { show("Could not send the request. Check the school code and your connection, then try again."); }
-  finally { $("rqGo").disabled = false; }
 });
 </script></body></html>

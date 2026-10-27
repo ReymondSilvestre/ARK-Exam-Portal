@@ -1,6 +1,8 @@
 // Admin-level actions that Firebase only allows from server code.
 //  adminSetTempPassword : Super Admin (IT admins), school IT admin (teachers + students of that school), teacher (own students).
+//                         Also used for the IT Admin's "Set password" action (an admin-chosen password instead of the default).
 //  adminDeleteUser      : Super Admin removes an IT admin; a school IT admin removes a teacher or student of that school.
+//  superDeleteSchool    : Super Admin permanently deletes a whole school and everyone in it.
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 admin.initializeApp();
@@ -37,7 +39,7 @@ function canManage(me, myUid, t, st) {
 
 exports.adminSetTempPassword = onCall(async (req) => {
   const me = await who(req);
-  const { uid, password, requestId, useDefault } = req.data || {};
+  const { uid, password, useDefault } = req.data || {};
   if (typeof uid !== "string" || !uid) throw new HttpsError("invalid-argument", "Missing account.");
   const t = (await db.doc(`users/${uid}`).get()).data();
   if (!t || !["admin", "teacher", "student"].includes(t.role)) throw new HttpsError("not-found", "That account was not found.");
@@ -56,8 +58,6 @@ exports.adminSetTempPassword = onCall(async (req) => {
   await admin.auth().updateUser(uid, { password: pw });
   await admin.auth().revokeRefreshTokens(uid);
   await db.doc(`users/${uid}`).update({ mustChangePassword: true, passwordResetAt: now(), updatedAt: now() });
-  if (me.role === "admin" && typeof requestId === "string" && requestId)
-    await db.doc(`resetRequests/${requestId}`).update({ status: "resolved", resolvedAt: now(), resolvedBy: req.auth.uid });
   await audit(req.auth.uid, t.schoolId || me.schoolId, `${t.role}.temp_password_set`, uid, { username: t.employeeId || t.studentId || t.email });
   return { ok: true };
 });
@@ -102,5 +102,44 @@ exports.adminDeleteUser = onCall(async (req) => {
   await dropAuth(uid);
   await db.doc(`users/${uid}`).delete();
   await audit(req.auth.uid, t.schoolId || "", `${t.role}.deleted`, uid, { username: t.employeeId || t.studentId || t.email });
+  return { ok: true };
+});
+
+/** Super Admin permanently removes a registered school: its IT Admin, every teacher and student of
+ *  that school (and everything they own), and the school document itself. */
+exports.superDeleteSchool = onCall(async (req) => {
+  const me = await who(req);
+  if (me.role !== "superadmin") throw new HttpsError("permission-denied", "Only the Super Admin can delete a school.");
+  const { schoolId } = req.data || {};
+  if (typeof schoolId !== "string" || !schoolId) throw new HttpsError("invalid-argument", "Missing school.");
+  const scSnap = await db.doc(`schools/${schoolId}`).get();
+  if (!scSnap.exists) throw new HttpsError("not-found", "That school was not found.");
+  const sc = scSnap.data();
+
+  const peopleSnap = await db.collection("users").where("schoolId", "==", schoolId).get();
+  for (const d of peopleSnap.docs) {
+    const t = d.data();
+    if (t.role === "student" && t.studentId) {
+      await dropAuth(d.id);
+      continue; // the owning teacher's cleanup below removes the student record itself
+    }
+  }
+  for (const d of peopleSnap.docs) {
+    const t = d.data();
+    // The IT Admin also has every teacher tool, so they may own sections/exams/students directly too.
+    if (t.role !== "teacher" && t.role !== "admin") continue;
+    const studs = await db.collection("students").where("ownerUid", "==", d.id).get();
+    for (const s of studs.docs) {
+      const a = s.data().accountUid;
+      if (a) { await dropAuth(a); await db.doc(`users/${a}`).delete().catch(() => {}); }
+    }
+    for (const c of ["scanResults", "examAttempts", "examSubmissions", "examKeys", "examPapers", "moduleChunks", "modules", "examinations", "answerKeys", "answerSheets", "enrollments", "teacherLinks", "classCodes", "students", "classes"])
+      await deleteAll(db.collection(c).where("ownerUid", "==", d.id));
+    await dropAuth(d.id);
+  }
+  await deleteAll(db.collection("auditLogs").where("schoolId", "==", schoolId));
+  for (const d of peopleSnap.docs) await db.doc(`users/${d.id}`).delete().catch(() => {});
+  await db.doc(`schools/${schoolId}`).delete();
+  await audit(req.auth.uid, "", "school.deleted", schoolId, { name: sc.name, code: sc.code });
   return { ok: true };
 });

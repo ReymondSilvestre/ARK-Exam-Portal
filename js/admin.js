@@ -1,4 +1,4 @@
-import { requireRole, logout, db, esc, friendlyError, app, staffEmail, fbPass, defaultStudentPassword, fullName } from "./auth.js";
+import { requireRole, logout, db, esc, friendlyError, app, staffEmail, fbPass, defaultStudentPassword, fullName, applyBranding } from "./auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -7,6 +7,7 @@ import {
   collection, query, where, orderBy, limit, getDocs, getCountFromServer,
   doc, setDoc, updateDoc, deleteDoc, addDoc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { b64 } from "./files.js";
 
 const $ = (id) => document.getElementById(id);
 // The school's IT admin. Everything below is limited to this one school.
@@ -14,6 +15,7 @@ const { user, profile, school } = await requireRole(["admin"]);
 const SID = profile.schoolId;
 $("who").textContent = profile.displayName; $("school").textContent = `${school.name} (${school.code})`;
 $("out").onclick = logout;
+applyBranding(school);
 
 /* ---------- helpers ---------- */
 const msg = $("msg");
@@ -44,7 +46,7 @@ function setSync() {
 addEventListener("online", setSync); addEventListener("offline", setSync); setSync();
 
 /* ---------- navigation ---------- */
-const titles = { dashboard: "Dashboard", teachers: "Accounts", requests: "Reset requests", activity: "Activity log" };
+const titles = { dashboard: "Dashboard", teachers: "Accounts", branding: "Branding", activity: "Activity log" };
 function nav() {
   const v = titles[location.hash.slice(1)] ? location.hash.slice(1) : "dashboard";
   document.querySelectorAll("[data-view]").forEach((s) => (s.hidden = s.dataset.view !== v));
@@ -78,6 +80,7 @@ function renderTeachers() {
       <td class="actions">
         <button class="btn small" data-act="toggle" data-uid="${esc(t.uid)}">${t.status === "active" ? "Suspend" : "Reactivate"}</button>
         <button class="btn small" data-act="reset" data-uid="${esc(t.uid)}">Reset password</button>
+        <button class="btn small" data-act="setpw" data-uid="${esc(t.uid)}">Set password</button>
         <button class="btn small danger" data-act="remove" data-uid="${esc(t.uid)}">Remove account</button>
       </td></tr>`; }).join("") : `<tr><td colspan="6">No accounts found.</td></tr>`);
 }
@@ -118,12 +121,27 @@ $("newT").addEventListener("submit", async (e) => {
 });
 
 /* ---------- reset a password to the temporary one (needs the Cloud Function, README step G) ---------- */
-async function resetToDefault(t, requestId) {
+async function resetToDefault(t) {
   const pw = pwOf(t);
   if (!pw) throw new Error("This account has no birthday or last name on file, so the temporary password cannot be made.");
-  try { await httpsCallable(getFunctions(app), "adminSetTempPassword")({ uid: t.uid, useDefault: true, requestId: requestId || null }); }
+  try { await httpsCallable(getFunctions(app), "adminSetTempPassword")({ uid: t.uid, useDefault: true }); }
   catch (err) { throw fnMissing(err) ? new Error("The password-reset service is not set up yet (README step G).") : err; }
   popup(`Password reset for ${t.displayName}`, `Username: ${t.role === "student" ? "Exam ID No. " + t.studentId : "school code " + school.code + " + Employee No. " + t.employeeId}. Temporary password below. They must choose a new password at the next sign-in.`, pw);
+}
+
+/* ---------- set a specific password for an account (instead of only the birth-year default) ----------
+   This replaces the account's real sign-in password outright - once set, their old password
+   (whatever they changed it to) stops working, same as "Reset password" above. Uses the same
+   Cloud Function as "Reset password", just with the password you choose instead of the default. */
+async function setCustomPassword(t) {
+  const min = t.role === "student" ? 6 : 10;
+  const pw = prompt(`Set a new password for ${t.displayName}.\n\nThis becomes their sign-in password right away; whatever they changed it to stops working. At least ${min} characters${t.role === "student" ? "" : ", with a letter and a number"}. They are not told what it is.`);
+  if (pw === null) return;
+  if (pw.length < min || (t.role !== "student" && (!/[A-Za-z]/.test(pw) || !/\d/.test(pw)))) return flash(`Use at least ${min} characters${t.role === "student" ? "" : " with a letter and a number"}.`);
+  try {
+    await httpsCallable(getFunctions(app), "adminSetTempPassword")({ uid: t.uid, password: pw });
+    flash(`Password set for ${t.displayName}. They must choose a new one at their next sign-in.`, true);
+  } catch (err) { throw fnMissing(err) ? new Error("The password service is not set up yet (README step G).") : err; }
 }
 
 /* ---------- remove an account (Firestore AND Firebase Authentication) ---------- */
@@ -148,6 +166,7 @@ $("teachers").addEventListener("click", async (e) => {
   const t = users.find((x) => x.uid === b.dataset.uid); if (!t) return;
   try {
     if (b.dataset.act === "remove") { await removeAccount(t); await refresh(); return; }
+    if (b.dataset.act === "setpw") { await setCustomPassword(t); return; }
     if (b.dataset.act === "reset") {
       if (!ask(`Reset the password of ${t.displayName} to birth year + first letter of last name? Their current password will stop working.`)) return;
       await resetToDefault(t);
@@ -157,45 +176,6 @@ $("teachers").addEventListener("click", async (e) => {
       await updateDoc(doc(db, "users", t.uid), { status: next, updatedAt: serverTimestamp() });
       await logAudit(t.role + "." + next, t.uid, { username: userOf(t) });
       flash(`${t.displayName} is now ${next}.`, true);
-    }
-    await refresh();
-  } catch (err) { flash(friendlyError(err)); }
-});
-
-/* ---------- password reset requests ---------- */
-let requests = [];
-async function loadRequests() {
-  const snap = await getDocs(query(collection(db, "resetRequests"), where("schoolId", "==", SID), orderBy("createdAt", "desc"), limit(100)));
-  requests = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
-    .sort((a, b) => (a.status === "pending" ? 0 : 1) - (b.status === "pending" ? 0 : 1)); // pending first, newest first within
-  renderRequests();
-}
-const matchOf = (r) => teachers.find((x) => String(x.employeeId).toLowerCase() === String(r.employeeId).toLowerCase());
-function renderRequests() {
-  const pending = requests.filter((r) => r.status === "pending").length;
-  $("reqCount").textContent = pending; $("reqCount").hidden = !pending; $("s-req").textContent = pending;
-  $("reqTbl").innerHTML = `<tr><th>Requested</th><th>Employee No.</th><th>Check</th><th>Status</th><th></th></tr>` +
-    (requests.length ? requests.map((r) => { const t = matchOf(r), open = r.status === "pending"; return `<tr>
-      <td>${fmt(r.createdAt)}</td><td>${esc(r.employeeId)}</td>
-      <td>${t ? `<span class="badge active">Matches ${esc(t.displayName)}</span>` : '<span class="badge suspended">No teacher with this Employee No.</span>'}</td>
-      <td><span class="badge ${open ? "warn" : "active"}">${esc(r.status)}</span></td>
-      <td class="actions">${open ? `<button class="btn small primary" data-act="temp" data-id="${esc(r.id)}" ${t ? "" : "disabled"}>Reset to temporary password</button>
-        <button class="btn small" data-act="dismiss" data-id="${esc(r.id)}">Dismiss</button>` : ""}</td></tr>`; }).join("")
-      : `<tr><td colspan="5">No requests yet.</td></tr>`);
-}
-$("reqTbl").addEventListener("click", async (e) => {
-  const b = e.target.closest("button[data-act]"); if (!b) return;
-  const r = requests.find((x) => x.id === b.dataset.id); if (!r) return;
-  const t = matchOf(r);
-  try {
-    if (b.dataset.act === "temp") {
-      if (!t) return;
-      if (!ask(`Reset the password of ${t.displayName} (Employee No. ${t.employeeId}) to birth year + first letter of last name?\nVerify the person first. Their current password will stop working.`)) return;
-      await resetToDefault(t, r.id);
-    } else {
-      if (!ask(`Dismiss the request for Employee No. ${r.employeeId}?`)) return;
-      await updateDoc(doc(db, "resetRequests", r.id), { status: "dismissed", resolvedAt: serverTimestamp(), resolvedBy: user.uid });
-      await logAudit("reset.request_dismissed", t?.uid || "", { username: r.employeeId });
     }
     await refresh();
   } catch (err) { flash(friendlyError(err)); }
@@ -218,7 +198,43 @@ async function loadCounts() {
   } catch (err) { flash("Could not load counts: " + friendlyError(err)); }
 }
 async function refresh() {
-  try { await loadTeachers(); await Promise.all([loadRequests(), loadAudit(), loadCounts()]); }
+  try { await loadTeachers(); await Promise.all([loadAudit(), loadCounts()]); }
   catch (err) { flash("Could not load data: " + friendlyError(err)); }
 }
 refresh();
+
+/* ---------- branding: school name + logo, set by the IT Admin, shown across the school's pages ---------- */
+const LOGO_MAX = 500 * 1024;
+function loadBranding() {
+  $("brandName").value = school.displayName || "";
+  $("brandPrev").innerHTML = school.logo ? `<img src="${school.logo}" alt="" style="max-width:100%;max-height:100%">` : "No logo";
+}
+loadBranding();
+$("brandLogo").addEventListener("change", async () => {
+  const f = $("brandLogo").files[0]; if (!f) return;
+  if (f.size > LOGO_MAX) { flash("That image is larger than 500 KB. Choose a smaller file."); $("brandLogo").value = ""; return; }
+  const url = `data:${f.type};base64,${await b64(f)}`;
+  $("brandPrev").innerHTML = `<img src="${url}" alt="" style="max-width:100%;max-height:100%">`;
+  $("brandPrev").dataset.pending = url;
+});
+$("brandF").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("brandSave").disabled = true;
+  try {
+    const patch = { displayName: $("brandName").value.trim(), updatedAt: serverTimestamp() };
+    if ($("brandPrev").dataset.pending) patch.logo = $("brandPrev").dataset.pending;
+    await updateDoc(doc(db, "schools", SID), patch);
+    school.displayName = patch.displayName; if (patch.logo) school.logo = patch.logo;
+    delete $("brandPrev").dataset.pending;
+    applyBranding(school);
+    flash("Branding saved.", true);
+  } catch (err) { flash(friendlyError(err)); }
+  finally { $("brandSave").disabled = false; }
+});
+$("brandClear").addEventListener("click", async () => {
+  if (!ask("Remove the logo and go back to the default ARK mark?")) return;
+  try {
+    await updateDoc(doc(db, "schools", SID), { logo: "", updatedAt: serverTimestamp() });
+    location.reload();
+  } catch (err) { flash(friendlyError(err)); }
+});

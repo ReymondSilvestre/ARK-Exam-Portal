@@ -9,6 +9,13 @@ functions/  index.js package.json
 firestore.rules firebase.json firestore.indexes.json
 ```
 
+## New in this update
+- **School branding (IT Admin).** IT Admin > Branding: set the school name shown on screen and upload a logo (stored on the school's own document). Replaces the "ARK" mark across that school's Teacher, Student and IT Admin pages (not the sign-in page). Works with no Cloud Function.
+- **Delete a school (Super Admin).** Super Admin page: a trash icon on each row permanently deletes a school - its IT Admin, every teacher and student account in it, and everything they own (sections, exams, results, modules). Needs typing the school's name to confirm.
+  - With the `superDeleteSchool` Cloud Function deployed: also deletes the accounts' sign-in logins from Firebase Authentication.
+  - Without it: everything above still happens straight from the browser, except the sign-in logins themselves - those are left behind (harmless, since the Firestore profile they need to sign in to anything is gone) until removed by hand in Firebase console > Authentication > Users.
+- **Self-service "Forgot your password?" is removed**, from the sign-in page and from the IT Admin's reset-requests inbox. In its place, each account row has a **"Set password"** button: the IT Admin (or, for an IT Admin's own account, the Super Admin) types a password and it becomes that account's sign-in password immediately, overriding whatever the person had changed it to. They are not told what it is or that it was changed, beyond needing to pick a new one at their next sign-in. Reuses the same `adminSetTempPassword` Cloud Function as "Reset password" - **needs that function deployed** (README step G); there is no way to change another person's password without it, since Firebase blocks that from the browser by design.
+
 ## New in version 5
 - **Filter icon** (Students list and Results page): pick a section or *All sections* (grouped per section) and sort names A-Z, Z-A or by Exam ID No.
 - **Online exams.** Examinations > tick *Students answer this exam online*. Type each question (and the choices for multiple choice) or paste a link to your exam paper. Set a time limit if you want, then *Open* it. Students see it under **Online exams**, answer, submit once, and get the score at once. Results land in the normal Results page (ranking, Excel, item analysis work as before). Identification answers that match your accepted answers (separate several with `|`) are marked correct automatically when you open Results; other identification answers and essays wait for your check (*Check* button shows what the student wrote). *Retake* on a result lets a student start over. *Close* stops new submissions.
@@ -57,6 +64,11 @@ firebase use exam-scanner-ac29e
 cd functions && npm install && cd ..
 firebase deploy --only functions
 ```
+Adds `adminSetTempPassword`, `adminDeleteUser` and `superDeleteSchool`. This needs the Blaze (pay-as-you-go) plan, but a
+school this size stays inside Firebase's free monthly quota - Blaze only means billing is turned on, not that you'll be
+charged. Everything else in this app (branding, suspending/reactivating, signing in, scanning, exams) works with no
+Cloud Function at all; without it, "Set password", "Reset password" and the login-deletion part of "Remove account" and
+"Delete school" simply aren't available (their buttons show a clear message instead of failing silently).
 6. Super Admin page: **Register a school** (name, code, IT Admin name + email). Give the IT Admin the temporary password shown once.
 7. IT Admin signs in with email, changes the password, then **Accounts > Add a faculty / teacher account**.
 8. Teacher signs in with the school code + Employee No. + temporary password, adds sections, adds students, **Create logins**.

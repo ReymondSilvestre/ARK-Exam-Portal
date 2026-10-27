@@ -1,11 +1,12 @@
-import { requireRole, logout, db, esc, friendlyError, ageOf } from "./auth.js";
+import { requireRole, logout, db, esc, friendlyError, ageOf, applyBranding } from "./auth.js";
 import { collection, query, where, getDocs, getDoc, doc, setDoc, writeBatch, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { TERMS, termRank, score, missedText } from "./omr.js";
 import { sizeText, openModule, safeUrl } from "./files.js";
 
 const $ = (id) => document.getElementById(id);
-const { user, profile } = await requireRole(["student"]);
+const { user, profile, school } = await requireRole(["student"]);
 $("out").onclick = logout;
+applyBranding(school);
 const flash = (t, ok) => { const m = $("msg"); m.textContent = t; m.className = "notice " + (ok ? "ok" : "err"); m.hidden = false; clearTimeout(flash.t); flash.t = setTimeout(() => (m.hidden = true), 8000); };
 const net = () => { $("sync").className = "sync" + (navigator.onLine ? "" : " off"); $("sync").lastElementChild.textContent = navigator.onLine ? "Online" : "Offline"; };
 addEventListener("online", net); addEventListener("offline", net); net();

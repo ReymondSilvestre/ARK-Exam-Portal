@@ -2,7 +2,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, serverTimestamp }
+import { getFirestore, doc, getDoc, updateDoc, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { firebaseConfig } from "./firebase-config.js";
 
@@ -66,14 +66,6 @@ export function login(who, password, school) {
 }
 export const logout = async () => { await signOut(auth); location.href = "login.html"; };
 
-/** A signed-out teacher asks their school's IT Administrator for a password reset. */
-export async function requestPasswordReset(schoolCode, employeeId) {
-  await addDoc(collection(db, "resetRequests"), {
-    schoolId: schoolCode.trim().toUpperCase(), employeeId: employeeId.trim(),
-    status: "pending", createdAt: serverTimestamp(),
-  });
-}
-
 export async function getProfile(uid) {
   const s = await getDoc(doc(db, "users", uid));
   return s.exists() ? s.data() : null;
@@ -117,4 +109,22 @@ export function requireRole(roles, { allowMustChange = false } = {}) {
       resolve({ user, profile, school });
     });
   });
+}
+
+/* ---------- school identity (name + logo set by the IT Admin) ---------- */
+export const schoolTitle = (sc) => (sc && (sc.displayName || sc.name)) || "";
+/** Shows the school logo and name in the page's top bar / side bar (.brand). Falls back to the ARK mark. */
+export function applyBranding(sc) {
+  if (!sc) return;
+  const b = document.querySelector(".brand"); if (!b) return;
+  if (sc.logo) {
+    const m = b.querySelector(".mark");
+    const img = Object.assign(document.createElement("img"), { src: sc.logo, alt: "", className: "school-logo" });
+    if (m) m.replaceWith(img); else b.prepend(img);
+  }
+  const t = schoolTitle(sc);
+  if (t && !document.getElementById("brandSchool")) {
+    const n = document.createElement("small"); n.id = "brandSchool"; n.className = "brand-school"; n.textContent = t;
+    b.after(n);
+  }
 }

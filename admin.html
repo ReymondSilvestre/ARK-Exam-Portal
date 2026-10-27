@@ -9,7 +9,7 @@
     <nav>
       <a href="#dashboard" data-v="dashboard">Dashboard</a>
       <a href="#teachers" data-v="teachers">Accounts</a>
-      <a href="#requests" data-v="requests">Reset requests <span class="count" id="reqCount" hidden>0</span></a>
+      <a href="#branding" data-v="branding">Branding</a>
       <a href="#activity" data-v="activity">Activity log</a>
       <a href="teacher.html" class="tools">Teacher tools &rarr;</a>
     </nav>
@@ -26,7 +26,6 @@
         <div class="stat"><b id="s-teachers">-</b><span>Faculty / teachers</span></div>
         <div class="stat"><b id="s-active">-</b><span>Active teachers</span></div>
         <div class="stat"><b id="s-students">-</b><span>Student accounts</span></div>
-        <div class="stat warn"><b id="s-req">-</b><span>Pending reset requests</span></div>
         <div class="stat"><b id="s-exams">-</b><span>Examinations</span></div>
         <div class="stat"><b id="s-scans">-</b><span>Scanned answer sheets</span></div>
       </div>
@@ -54,11 +53,17 @@
       </div>
     </section>
 
-    <section data-view="requests" hidden>
+    <section data-view="branding" hidden>
       <div class="panel">
-        <h2>Password reset requests</h2>
-        <p class="muted">Teachers ask for a reset from the sign-in page with the school code and Employee No. Check the match, then reset the password to the temporary one (birth year + first letter of the last name) and give it to the teacher in person.</p>
-        <div class="tablewrap"><table id="reqTbl"></table></div>
+        <h2>School name and logo</h2>
+        <p class="muted">Shown instead of the default "ARK" mark across your school's pages (sign-in page excepted). Visible to your teachers and students right away.</p>
+        <form id="brandF" class="row" novalidate>
+          <label>School name shown on screen<input id="brandName" autocomplete="off" maxlength="80" placeholder="Registered name is used if left blank"></label>
+          <label>Logo (PNG/JPG/SVG, up to 500 KB)<input id="brandLogo" type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp"></label>
+          <div><span class="muted" style="display:block;margin-bottom:.3rem">Preview</span><div class="logo-prev" id="brandPrev">No logo</div></div>
+          <button class="btn primary" id="brandSave">Save</button>
+          <button class="btn" id="brandClear" type="button">Remove logo</button>
+        </form>
       </div>
     </section>
 
