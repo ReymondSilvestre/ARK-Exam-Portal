@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {
-  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword
+  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore, doc, getDoc, updateDoc, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -25,6 +25,26 @@ export const STAFF_DOMAIN = "staff.ark-exam.app";
 export const studentEmail = (examId) => `${String(examId).trim().toLowerCase()}@${STUDENT_DOMAIN}`;
 const slug = (s) => String(s).trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
 export const staffEmail = (schoolCode, employeeNo) => `${slug(schoolCode)}.${slug(employeeNo)}@${STAFF_DOMAIN}`;
+/* ---------- optional REAL email for teachers and students ----------
+   If an email is given when the account is created, that email IS the Firebase login (so "Forgot password" goes to
+   the person's own inbox). Because they can still sign in with school code + Employee No. / Exam ID No., a tiny
+   lookup document `loginIndex/{key}` maps that username to the email. Without an email nothing changes. */
+export const isRealEmail = (e) => {
+  const v = String(e || "").trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v) && !v.endsWith("@" + STUDENT_DOMAIN) && !v.endsWith("@" + STAFF_DOMAIN);
+};
+export const cleanEmail = (e) => (isRealEmail(e) ? String(e).trim().toLowerCase() : "");
+export const staffKey = (schoolCode, employeeNo) => `${slug(schoolCode)}.${slug(employeeNo)}`;
+export const studentKey = (examId) => slug(examId);
+/** The real email behind a username, or "" when the account has none (or the lookup is not allowed). */
+export async function lookupEmail(school, who) {
+  try {
+    const key = (school || "").trim() ? staffKey(school, who) : studentKey(who);
+    const s = await getDoc(doc(db, "loginIndex", key));
+    return s.exists() ? String(s.data().email || "") : "";
+  } catch { return ""; }
+}
+
 /** Firebase needs 6+ characters; "2012D" is only 5, so short passwords get a fixed internal suffix. */
 export const fbPass = (p) => (p.length < 6 ? p + "#ark" : p);
 /** Birth year + first letter of the last name, e.g. 1985 + Dela Cruz = "1985D". Used for teachers AND students. */
@@ -51,6 +71,7 @@ export function friendlyError(e) {
     "auth/weak-password": "Choose a stronger password (at least 6 characters).",
     "auth/email-already-in-use": "That account already exists (same school code and Employee No., or same email).",
     "auth/invalid-email": "That email address is not valid.",
+    "auth/missing-email": "Enter your email, Employee No. or Exam ID No. first.",
     "permission-denied": "You do not have permission for that action.",
   };
   return map[e?.code] || e?.message || "Something went wrong.";
@@ -59,10 +80,23 @@ export function friendlyError(e) {
 /** `who` = email (IT admin / Super Admin), Employee No. (teacher, needs `school`) or Exam ID No. (student, no school). */
 export function login(who, password, school) {
   who = who.trim();
-  if (who.includes("@")) return signInWithEmailAndPassword(auth, who, password);
   const pw = /^\d{4}[a-z]$/i.test(password) ? password.slice(0, 4) + password.slice(4).toUpperCase() : password;
-  const email = (school || "").trim() ? staffEmail(school, who) : studentEmail(who);
-  return signInWithEmailAndPassword(auth, email, fbPass(pw));
+  if (who.includes("@")) return signInWithEmailAndPassword(auth, who, fbPass(pw)); // fbPass only changes the short temporary password (example 2012D)
+  return lookupEmail(school, who).then((real) => {
+    const email = real || ((school || "").trim() ? staffEmail(school, who) : studentEmail(who));
+    return signInWithEmailAndPassword(auth, email, fbPass(pw));
+  });
+}
+
+/** "Forgot password": sends Firebase's reset email to the account's REAL email.
+ *  `who` = the email itself, or an Employee No. (with `school`) / Exam ID No.
+ *  Returns "sent" or "noemail" (the account exists without a real email, so only the IT Admin / teacher can reset it). */
+export async function sendReset(who, school) {
+  who = who.trim();
+  let email = who.includes("@") ? who : await lookupEmail(school, who);
+  if (!email) return "noemail";
+  await sendPasswordResetEmail(auth, email);
+  return "sent";
 }
 export const logout = async () => { await signOut(auth); location.href = "login.html"; };
 

@@ -42,9 +42,10 @@
           <label class="narrow">M.I.<input name="mi" maxlength="1" autocomplete="off"></label>
           <label>Employee No.<input name="employeeId" autocomplete="off" required></label>
           <label>Birthday<input name="birthday" type="date" required></label>
+          <label>Email <small>Optional. Used for password reset.</small><input name="email" type="email" autocomplete="off" placeholder="teacher@example.com"></label>
           <button class="btn primary" id="addBtn">Create account</button>
         </form>
-        <small>Username = Employee No. (with the school code). Temporary password = birth year + first letter of the last name (example <b>1985D</b>). The teacher must choose a new password at first sign-in.</small>
+        <small>Username = Employee No. (with the school code). Temporary password = birth year + first letter of the last name (example <b>1985D</b>). The teacher must choose a new password at first sign-in. If you enter the teacher's <b>real email</b>, the account is created with that email: they can still sign in with school code + Employee No., and <b>Forgot your password?</b> sends the reset link to that email.</small>
       </div>
       <div class="panel">
         <div class="row"><label>Search<input id="q" placeholder="Name, Employee No. or Exam ID No."></label>

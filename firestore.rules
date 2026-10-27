@@ -81,7 +81,7 @@ service cloud.firestore {
       allow read: if (signedIn() && request.auth.uid == uid) || isSuper() || (isAdmin() && inMySchool());
 
       allow create: if request.resource.data.keys().hasOnly(
-            ['uid','role','displayName','lastName','firstName','middleInitial','email','employeeId','studentId','birthday','status','mustChangePassword','createdAt','createdBy','schoolId','schoolName'])
+            ['uid','role','displayName','lastName','firstName','middleInitial','email','hasRealEmail','employeeId','studentId','birthday','status','mustChangePassword','createdAt','createdBy','schoolId','schoolName'])
         && request.resource.data.uid == uid
         && request.resource.data.status == 'active'
         && request.resource.data.mustChangePassword == true
@@ -112,6 +112,27 @@ service cloud.firestore {
       allow delete: if (isAdmin() && resource.data.role in ['teacher', 'student'] && inMySchool())
         || (isSuper() && resource.data.role in ['admin', 'teacher', 'student'])
         || (isStaff() && resource.data.role == 'student' && studentRec(resource.data.studentId).ownerUid == request.auth.uid);
+    }
+
+    /* ---------------- sign-in lookup for accounts that have a REAL email ----------------
+       key = school code + "." + Employee No. (teachers) or the Exam ID No. (students), lower case.
+       The sign-in page needs the email BEFORE anyone is signed in, so a single document can be read by its exact key
+       (get). Listing is not allowed, so the emails cannot be browsed. Only the creator can write or remove an entry. */
+    match /loginIndex/{key} {
+      allow get: if true;
+      allow list: if isSuper();
+      allow create: if request.resource.data.keys().hasOnly(['email','uid','role','studentId','schoolId','createdBy','createdAt'])
+        && request.resource.data.email is string && request.resource.data.email.matches('.+@.+[.].+')
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.schoolId == me().schoolId
+        && (
+          (isAdmin() && request.resource.data.role == 'teacher' && key.matches(me().schoolId.lower() + '[.].+'))
+          || (isStaff() && request.resource.data.role == 'student' && request.resource.data.studentId.lower() == key
+              && studentRec(request.resource.data.studentId).ownerUid == request.auth.uid)
+        );
+      allow update: if false;
+      allow delete: if isSuper() || (isAdmin() && resource.data.schoolId == me().schoolId)
+        || (isStaff() && resource.data.createdBy == request.auth.uid);
     }
 
     match /auditLogs/{id} {

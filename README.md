@@ -1,5 +1,18 @@
 # ARK Exam Scanner - version 5 (online exams, filter icon)
 
+## New in this update: real emails + auto-capture scanner
+**Do this first:** Firestore > Rules > paste `firestore.rules` > Publish (a new `loginIndex` rule is needed). Replace the `js/` files, `css/style.css`, `login.html`, `admin.html`, `teacher.html`. No Cloud Function is needed for any of this (re-deploy `functions/` only if you use them, so removing an account also removes its lookup entry).
+
+- **Optional real email for teacher and student accounts.**
+  - IT Admin > Accounts > *Add a faculty / teacher account* has an **Email** box. Teachers add the same box when adding a student (and the import file may have an **Email** column). Leave it blank and nothing changes.
+  - With an email, that email *is* the Firebase login. The person can still sign in with **school code + Employee No.** (teacher) or **Exam ID No.** (student), or with the email itself. Temporary password is unchanged (birth year + first letter of last name).
+  - **Forgot your password?** on the sign-in page sends Firebase's reset email to that real address (type the email, or Employee No. + school code, or Exam ID No.). Accounts without an email are told to ask their IT Admin / teacher.
+  - Accounts with an email also get an **Email reset link** button (IT Admin accounts list, teacher student list), so the person sets their own new password from their inbox.
+  - Enter the email *before* the account/login is created: the sign-in address of an existing account cannot be changed from the browser.
+  - How the Employee No. / Exam ID sign-in finds the email: a small document `loginIndex/{school.empno}` or `loginIndex/{examid}` holding the email can be read only by its exact key (no listing). Anyone who already knows a school code + Employee No. could therefore look up that one email. If that is not acceptable, give out email sign-in only and skip the Employee No. route.
+  - Optional: customise the reset email text in Firebase console > Authentication > Templates > Password reset.
+- **Scanner: auto-detect and auto-capture.** Scanner tab > Start camera. The four black corner squares are searched for continuously, anywhere in the picture and with uneven light or a tilted sheet. The sheet is outlined (blue = found, green = steady, orange = move closer); when it is fully in view, large enough and still for about 0.8 s, the picture is taken with a beep/vibration and read automatically. The camera then waits while you check the answers; **Save result** or **Rescan this sheet** resumes it for the next sheet. *Capture now* and *Auto-capture* (on/off) remain; uploading a photo also works better because the sheet no longer has to fill the picture.
+
 Folder layout (same as before, plus `superadmin.html` and `js/superadmin.js`):
 ```
 index.html login.html change-password.html superadmin.html admin.html teacher.html student.html

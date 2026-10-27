@@ -104,6 +104,7 @@ exports.adminDeleteUser = onCall(async (req) => {
   }
   await dropAuth(uid);
   await db.doc(`users/${uid}`).delete();
+  await deleteAll(db.collection("loginIndex").where("uid", "==", uid)); // the real-email sign-in lookup, if any
   await audit(req.auth.uid, t.schoolId || "", `${t.role}.deleted`, uid, { username: t.employeeId || t.studentId || t.email });
   return { ok: true };
 });
@@ -115,7 +116,7 @@ exports.adminDeleteUser = onCall(async (req) => {
 const SCHOOL_COLLECTIONS = [
   "scanResults", "examAttempts", "examSubmissions", "examKeys", "examPapers", "moduleChunks", "modules",
   "examinations", "answerKeys", "answerSheets", "enrollments", "teacherLinks", "classCodes", "students", "classes",
-  "resetRequests",
+  "resetRequests", "loginIndex",
 ];
 // Deleting a lot of data can take a while: give these two functions the maximum time.
 const HEAVY = { timeoutSeconds: 540, memory: "512MiB" };

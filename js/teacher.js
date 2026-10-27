@@ -1,11 +1,11 @@
-import { requireRole, logout, db, esc, friendlyError, app, studentEmail, fbPass, defaultStudentPassword, ageOf, fullName, applyBranding } from "./auth.js";
+import { requireRole, logout, db, esc, friendlyError, app, studentEmail, fbPass, defaultStudentPassword, ageOf, fullName, applyBranding, cleanEmail, studentKey, auth as mainAuth } from "./auth.js";
 import { collection, query, where, getDocs, getDoc, doc, setDoc, addDoc, updateDoc, deleteDoc, deleteField, writeBatch, runTransaction, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getAuth, createUserWithEmailAndPassword, signOut, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 import { firebaseConfig } from "./firebase-config.js";
-import { TYPES, TYPE_SHORT, TERMS, termRank, isAuto, itemsOf, lettersOf, MAX_ITEMS, sheetSVG, scanSheet, score, missedText, identMatches } from "./omr.js";
+import { TYPES, TYPE_SHORT, TERMS, termRank, isAuto, itemsOf, lettersOf, MAX_ITEMS, sheetSVG, scanSheet, score, missedText, identMatches, findCorners, SheetTracker } from "./omr.js";
 import { CHUNK, MAX_BYTES, sizeText, b64, safeUrl, openModule } from "./files.js";
 
 const $ = (id) => document.getElementById(id);
@@ -66,9 +66,9 @@ function render() {
   const stCmp = { az: byName, za: (x, y) => byName(y, x), id: (x, y) => String(x.number).localeCompare(String(y.number), undefined, { numeric: true }) }[$("stFSort").value] || byName;
   const stRow = (s) => s.joined ? `<tr><td>${esc(s.number)}</td><td>${esc(s.name)}</td><td>-</td><td></td><td><span class="badge active">Joined by code</span></td>
       <td class="actions"><button class="btn small danger" data-unjoin="${esc(s.enrollId)}">Remove from classroom</button></td></tr>`
-      : `<tr><td>${esc(s.number)}</td><td>${esc(s.name)}</td><td>${esc(bd(s.birthday))}</td><td>${ageOf(s.birthday)}</td>
+      : `<tr><td>${esc(s.number)}</td><td>${esc(s.name)}${s.email ? `<small>${esc(s.email)}</small>` : ""}</td><td>${esc(bd(s.birthday))}</td><td>${ageOf(s.birthday)}</td>
       <td>${s.accountUid ? '<span class="badge active">Has login</span>' : '<span class="badge warn">No login yet</span>'}</td>
-      <td class="actions">${s.accountUid ? `<button class="btn small" data-pw="${esc(s.id)}">Reset password</button>` : `<button class="btn small" data-mk="${esc(s.id)}">Create login</button>`}
+      <td class="actions">${s.accountUid && s.email ? `<button class="btn small" data-mail="${esc(s.id)}">Email reset link</button>` : ""}${s.accountUid ? `<button class="btn small" data-pw="${esc(s.id)}">Reset password</button>` : `<button class="btn small" data-mk="${esc(s.id)}">Create login</button>`}
       <button class="btn small danger" data-rm="${esc(s.id)}">Remove</button></td></tr>`;
   let stBody = "";
   for (const c of fsec ? S.classes.filter((x) => x.id === fsec) : S.classes) { // "All sections": one group per section, names sorted inside each
@@ -154,7 +154,7 @@ async function allocIds(n) {
   return Array.from({ length: n }, (_, i) => `${year}-${String(start + i + 1).padStart(4, "0")}`);
 }
 const studentData = (p, c, id) => ({ ownerUid: user.uid, schoolId: SID, classId: c.id, className: c.name, number: id, lastName: p.last, firstName: p.first, middleInitial: p.mi || "",
-  name: fullName(p.last, p.first, p.mi), birthday: p.birthday || "", createdAt: serverTimestamp() });
+  name: fullName(p.last, p.first, p.mi), birthday: p.birthday || "", email: cleanEmail(p.email), createdAt: serverTimestamp() });
 /** The student's document id IS the Exam ID No. If another teacher already has that id, Firestore refuses (permission-denied) and we try the next number. */
 async function createStudent(p, c) {
   let last;
@@ -166,11 +166,12 @@ async function createStudent(p, c) {
 }
 $("stBday").oninput = () => ($("stAge").value = ageOf($("stBday").value));
 $("stAdd").onclick = () => run(async () => {
-  const c = clsOf($("stClass").value), p = { last: $("stLast").value.trim(), first: $("stFirst").value.trim(), mi: $("stMi").value.trim().slice(0, 1).toUpperCase(), birthday: $("stBday").value };
+  const c = clsOf($("stClass").value), p = { last: $("stLast").value.trim(), first: $("stFirst").value.trim(), mi: $("stMi").value.trim().slice(0, 1).toUpperCase(), birthday: $("stBday").value, email: $("stEmail").value.trim() };
   if (!c || !p.last || !p.first) return flash("Choose a section and enter the student's last name and first name.");
+  if (p.email && !cleanEmail(p.email)) return flash("That email address is not valid. Fix it or leave it blank.");
   if (!p.birthday) return flash("Enter the birthday. It is used for the age and for the student's login password.");
   const id = await createStudent(p, c);
-  ["stLast", "stFirst", "stMi", "stBday", "stAge"].forEach((i) => ($(i).value = "")); await refresh(); $("stLast").focus();
+  ["stLast", "stFirst", "stMi", "stBday", "stAge", "stEmail"].forEach((i) => ($(i).value = "")); await refresh(); $("stLast").focus();
   flash(`Added ${fullName(p.last, p.first, p.mi)} with Exam ID No. ${id}.`, 1);
 });
 
@@ -183,10 +184,16 @@ async function withCreator(fn) {
 }
 async function makeLogin(s, a2) {
   const pw = defaultStudentPassword(s); if (!pw) throw new Error("Add the birthday and last name first.");
-  const email = studentEmail(s.number), cred = await createUserWithEmailAndPassword(a2, email, fbPass(pw));
-  await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, role: "student", displayName: s.name, email, studentId: s.id, birthday: s.birthday,
-    schoolId: SID, schoolName: profile.schoolName || "", status: "active", mustChangePassword: true, createdAt: serverTimestamp(), createdBy: user.uid });
-  await updateDoc(doc(db, "students", s.id), { accountUid: cred.user.uid });
+  // A real email (typed when the student was added) becomes the login; otherwise the internal Exam ID address is used.
+  const real = cleanEmail(s.email), key = studentKey(s.number);
+  if (real && key !== String(s.number).toLowerCase()) throw new Error("This Exam ID No. has unusual characters, so a real email cannot be used with it.");
+  const email = real || studentEmail(s.number), cred = await createUserWithEmailAndPassword(a2, email, fbPass(pw));
+  try {
+    await setDoc(doc(db, "users", cred.user.uid), { uid: cred.user.uid, role: "student", displayName: s.name, email, studentId: s.id, birthday: s.birthday,
+      schoolId: SID, schoolName: profile.schoolName || "", status: "active", mustChangePassword: true, createdAt: serverTimestamp(), createdBy: user.uid, ...(real ? { hasRealEmail: true } : {}) });
+    if (real) await setDoc(doc(db, "loginIndex", key), { email, uid: cred.user.uid, role: "student", studentId: s.id, schoolId: SID, createdBy: user.uid, createdAt: serverTimestamp() });
+    await updateDoc(doc(db, "students", s.id), { accountUid: cred.user.uid });
+  } catch (err) { await deleteDoc(doc(db, "users", cred.user.uid)).catch(() => {}); await deleteUser(cred.user).catch(() => {}); throw err; }
   await signOut(a2);
 }
 $("stLogins").onclick = () => run(async () => {
@@ -208,8 +215,12 @@ $("stTbl").onclick = (e) => run(async () => {
     if (!S.joins.some((x) => x.id !== j.id && x.studentId === j.studentId)) await deleteDoc(doc(db, "teacherLinks", `${j.studentId}_${user.uid}`)).catch(() => {});
     await refresh(); return flash(`${j.studentName} was removed from ${j.className}.`, 1);
   }
-  const b = e.target.closest("[data-rm],[data-mk],[data-pw]"); if (!b) return;
-  const s = S.students.find((x) => x.id === (b.dataset.rm || b.dataset.mk || b.dataset.pw)); if (!s) return;
+  const b = e.target.closest("[data-rm],[data-mk],[data-pw],[data-mail]"); if (!b) return;
+  const s = S.students.find((x) => x.id === (b.dataset.rm || b.dataset.mk || b.dataset.pw || b.dataset.mail)); if (!s) return;
+  if (b.dataset.mail !== undefined) {
+    if (!confirm(`Send a password-reset link to ${s.email}? ${s.name} can then choose a new password from their own inbox.`)) return;
+    await sendPasswordResetEmail(mainAuth, s.email); return flash(`Reset link sent to ${s.email}.`, 1);
+  }
   if (b.dataset.mk !== undefined) {
     await withCreator((a2) => makeLogin(s, a2));
     await refresh(); return flash(`Login created for ${s.name}. Username ${s.number}, password ${defaultStudentPassword(s)}.`, 1);
@@ -222,6 +233,7 @@ $("stTbl").onclick = (e) => run(async () => {
   }
   if (!confirm(`Remove ${s.name} (${s.number}) and their login? Saved results for this student stay in the results list.`)) return;
   if (s.accountUid) await deleteDoc(doc(db, "users", s.accountUid)).catch(() => {});
+  if (s.email) await deleteDoc(doc(db, "loginIndex", studentKey(s.number))).catch(() => {});
   await deleteDoc(doc(db, "students", s.id)); await refresh();
 });
 
@@ -256,17 +268,17 @@ $("stCsv").onchange = (e) => run(async () => {
   if (!c || !f) return flash("Choose a section first.");
   let rows = (await readTable(f)).filter((r) => r.some(Boolean)), col = null;
   if (rows.length && rows[0].some((x) => /name|birth|exam|\bid\b/i.test(x))) {
-    col = {}; rows[0].forEach((h, i) => { const t = h.toLowerCase(); const k = /birth|bday|dob/.test(t) ? "bday" : /last|surname|family/.test(t) ? "last" : /first|given/.test(t) ? "first"
+    col = {}; rows[0].forEach((h, i) => { const t = h.toLowerCase(); const k = /e-?mail/.test(t) ? "email" : /birth|bday|dob/.test(t) ? "bday" : /last|surname|family/.test(t) ? "last" : /first|given/.test(t) ? "first"
       : /^m\.?\s?i\.?$|middle/.test(t) ? "mi" : /exam|student|\bid\b|\bno\b/.test(t) ? "id" : /name/.test(t) ? "name" : null; if (k && !(k in col)) col[k] = i; });
     rows = rows.slice(1);
   }
   const people = rows.map((r) => {
     const g = (k) => (col ? (k in col ? r[col[k]] || "" : "") : ""); let p;
-    if (col) p = ("last" in col || "first" in col) ? { id: g("id"), last: g("last"), first: g("first"), mi: g("mi"), bday: g("bday") } : { id: g("id"), ...parseName(g("name")), bday: g("bday") };
+    if (col) p = ("last" in col || "first" in col) ? { id: g("id"), last: g("last"), first: g("first"), mi: g("mi"), bday: g("bday"), email: g("email") } : { id: g("id"), ...parseName(g("name")), bday: g("bday"), email: g("email") };
     else if (r.length === 1) p = { id: "", ...parseName(r[0]), bday: "" };
     else if (r.length === 2) p = { id: r[0], ...parseName(r[1]), bday: "" };
     else p = { id: r[0], last: r[1], first: r[2], mi: r[3] || "", bday: r[4] || "" };
-    return { id: p.id.trim(), last: p.last.trim(), first: p.first.trim(), mi: (p.mi || "").trim().slice(0, 1).toUpperCase(), birthday: parseDate(p.bday) };
+    return { id: p.id.trim(), last: p.last.trim(), first: p.first.trim(), mi: (p.mi || "").trim().slice(0, 1).toUpperCase(), birthday: parseDate(p.bday), email: cleanEmail(p.email) };
   }).filter((p) => p.last && p.first);
   const have = new Set(S.home.map((s) => s.id)); let skipped = 0, auto = 0, nodate = 0;
   const explicit = people.filter((p) => p.id && !have.has(p.id) && have.add(p.id)), dupes = people.filter((p) => p.id).length - explicit.length;
@@ -540,30 +552,100 @@ addEventListener("afterprint", () => setPage("@page{margin:10mm}"));
 
 /* ---------- scanner ---------- */
 let stream, R = null; // R = the sheet being reviewed {ex, items, answers, manual, flags}
+/* Auto-detect + auto-capture: while the camera runs, every ~130 ms a small copy of the frame is searched for the 4 black
+   corner squares. When the whole sheet is in view, big enough and holding still, the picture is taken and read by itself.
+   After that the loop pauses (so a sheet being reviewed is never replaced) until the result is saved or "Rescan" is pressed. */
+const AUTO = { tracker: new SheetTracker(), timer: 0, paused: false, busy: false, cool: 0, work: document.createElement("canvas"), ac: null };
+const scanOpen = () => !document.querySelector('[data-s="scan"]').hidden;
+const status = (t, cls = "") => { const el = $("scStatus"); el.textContent = t; el.className = "scstat " + cls; };
+function beep() {
+  try { AUTO.ac = AUTO.ac || new (window.AudioContext || window.webkitAudioContext)(); const o = AUTO.ac.createOscillator(), g = AUTO.ac.createGain();
+    o.frequency.value = 880; g.gain.value = 0.08; o.connect(g); g.connect(AUTO.ac.destination); o.start(); o.stop(AUTO.ac.currentTime + 0.12); } catch {}
+  try { navigator.vibrate?.(60); } catch {}
+}
+function drawOverlay(st, w, h) {
+  const v = $("vid"), cv = $("ovl"), ew = v.clientWidth, eh = v.clientHeight; if (!ew) return;
+  if (cv.width !== ew || cv.height !== eh) { cv.width = ew; cv.height = eh; }
+  const x = cv.getContext("2d"); x.clearRect(0, 0, ew, eh);
+  const k = Math.min(ew / v.videoWidth, eh / v.videoHeight), ox = (ew - v.videoWidth * k) / 2, oy = (eh - v.videoHeight * k) / 2, f = (v.videoWidth / w) * k;
+  const P = (p) => [ox + p[0] * f, oy + p[1] * f];
+  if (!st.pts) { // no sheet yet: show a guide frame the shape of the sheet
+    const gh = Math.min(eh * 0.86, ew * 0.9 * 1.31), gw = gh / 1.31; x.setLineDash([10, 8]); x.lineWidth = 3; x.strokeStyle = "rgba(255,255,255,.6)";
+    x.strokeRect((ew - gw) / 2, (eh - gh) / 2, gw, gh); return;
+  }
+  const [a, b, c, d] = st.pts.map(P), col = st.state === "ready" || st.state === "steady" ? "#22c55e" : st.state === "far" ? "#f59e0b" : "#38bdf8";
+  x.setLineDash([]); x.lineWidth = 4; x.strokeStyle = col; x.fillStyle = col + "33";
+  x.beginPath(); x.moveTo(...a); x.lineTo(...b); x.lineTo(...d); x.lineTo(...c); x.closePath(); x.fill(); x.stroke();
+  x.fillStyle = col; [a, b, c, d].forEach(([px, py]) => { x.beginPath(); x.arc(px, py, 7, 0, 7); x.fill(); });
+  if (st.progress > 0) { // progress bar along the bottom edge of the sheet
+    x.lineWidth = 7; x.strokeStyle = "#fff"; x.beginPath(); x.moveTo(c[0], c[1]); x.lineTo(c[0] + (d[0] - c[0]) * st.progress, c[1] + (d[1] - c[1]) * st.progress); x.stroke();
+  }
+}
+function liveStep() {
+  const v = $("vid");
+  if (!stream || AUTO.paused || AUTO.busy || !$("autoCap").checked || !v.videoWidth || !scanOpen() || document.hidden) return;
+  if (performance.now() < AUTO.cool) return;
+  if (!$("scExam").value) { status("Choose the examination first."); $("ovl").getContext("2d").clearRect(0, 0, 9999, 9999); return; }
+  const k = Math.min(1, 640 / Math.max(v.videoWidth, v.videoHeight)), w = Math.round(v.videoWidth * k), h = Math.round(v.videoHeight * k), cv = AUTO.work;
+  cv.width = w; cv.height = h; const ctx = cv.getContext("2d", { willReadFrequently: true }); ctx.drawImage(v, 0, 0, w, h);
+  const d = ctx.getImageData(0, 0, w, h).data, g = new Uint8ClampedArray(w * h);
+  for (let i = 0; i < g.length; i++) g[i] = 0.299 * d[4 * i] + 0.587 * d[4 * i + 1] + 0.114 * d[4 * i + 2];
+  const det = findCorners(g, w, h), st = AUTO.tracker.update(det, w, h, performance.now());
+  drawOverlay(st, w, h);
+  if (st.state === "none") status(st.seen >= 2 ? "Show all 4 black corner squares of the sheet." : "Looking for the answer sheet...");
+  else if (st.state === "far") status("Sheet found. Move closer so it fills more of the screen.", "warn");
+  else if (st.state === "moving") status("Sheet found. Hold it steady...", "go");
+  else if (st.state === "steady") status("Hold steady...", "go");
+  else { AUTO.busy = true; status("Captured. Reading the sheet...", "go"); autoCapture(); }
+}
+async function autoCapture() {
+  try {
+    beep(); $("vidwrap").classList.remove("flash"); void $("vidwrap").offsetWidth; $("vidwrap").classList.add("flash");
+    const ok = grab($("vid"), $("vid").videoWidth, $("vid").videoHeight, true);
+    if (ok) { AUTO.paused = true; status("Sheet read. Check the answers below, then save.", "go"); }
+    else { AUTO.cool = performance.now() + 2500; AUTO.tracker.reset(); }  // could not read it: try again from a fresh look after a short pause
+  } finally { AUTO.busy = false; }
+}
+function resumeAuto(msg) { AUTO.paused = false; AUTO.cool = performance.now() + 600; AUTO.tracker.reset(); if (stream) status(msg || "Place the next answer sheet in view."); }
+function stopCamera() {
+  clearInterval(AUTO.timer); stream?.getTracks().forEach((t) => t.stop()); stream = null; $("vid").srcObject = null;
+  $("vidwrap").hidden = true; $("capBtn").disabled = true; $("camBtn").textContent = "Start camera";
+}
 $("camBtn").onclick = async () => {
-  try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 } }, audio: false });
-    $("vid").srcObject = stream; $("vid").hidden = false; $("capBtn").disabled = false;
+  if (stream) return stopCamera();
+  try {
+    try { AUTO.ac = AUTO.ac || new (window.AudioContext || window.webkitAudioContext)(); AUTO.ac.resume?.(); } catch {}   // created on the click so the capture beep is allowed later
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    $("vid").srcObject = stream; $("vidwrap").hidden = false; $("capBtn").disabled = false; $("camBtn").textContent = "Stop camera";
+    try { await stream.getVideoTracks()[0].applyConstraints({ advanced: [{ focusMode: "continuous" }] }); } catch {}   // keep the sheet sharp where the phone allows it
+    AUTO.paused = !!(R && !$("review").hidden); AUTO.tracker.reset();
+    status(AUTO.paused ? "Finish the sheet below, or press Rescan." : "Looking for the answer sheet...");
+    clearInterval(AUTO.timer); AUTO.timer = setInterval(liveStep, 130);
   } catch { flash("Camera unavailable. Allow camera access (HTTPS is required) or upload a photo."); }
 };
-$("capBtn").onclick = () => grab($("vid"), $("vid").videoWidth, $("vid").videoHeight);
+$("autoCap").onchange = () => { AUTO.tracker.reset(); if ($("autoCap").checked) { resumeAuto(); } else { $("ovl").getContext("2d").clearRect(0, 0, 9999, 9999); status("Auto-capture is off. Press Capture now."); } };
+$("capBtn").onclick = () => { AUTO.paused = true; if (!grab($("vid"), $("vid").videoWidth, $("vid").videoHeight)) resumeAuto("Could not read the sheet. Adjust and try again."); else status("Sheet read. Check the answers below, then save.", "go"); };
+$("scAgain").onclick = () => { $("review").hidden = true; $("cv").hidden = true; R = null; resumeAuto(); };
 $("file").onchange = (e) => { const f = e.target.files[0]; if (!f) return; const im = new Image(); im.onload = () => grab(im, im.naturalWidth, im.naturalHeight); im.src = URL.createObjectURL(f); e.target.value = ""; };
 $("scExam").onchange = () => { const ex = examOf($("scExam").value); if (ex?.classId) $("scSec").value = ex.classId; fillStudents(); };
 $("scSec").onchange = () => fillStudents($("scStu").value);
 
-function grab(src, w0, h0) {
-  const ex = examOf($("scExam").value); if (!ex) return flash("Choose an examination first.");
-  if (!w0) return flash("The camera is not ready yet.");
-  const k = Math.min(1, 1400 / Math.max(w0, h0)), w = Math.round(w0 * k), h = Math.round(h0 * k), cv = $("cv");
+function grab(src, w0, h0, auto) {
+  const ex = examOf($("scExam").value); if (!ex) return void flash("Choose an examination first.");
+  if (!w0) return void flash("The camera is not ready yet.");
+  const k = Math.min(1, (auto ? 1800 : 1400) / Math.max(w0, h0)), w = Math.round(w0 * k), h = Math.round(h0 * k), cv = $("cv");
   cv.width = w; cv.height = h; const ctx = cv.getContext("2d", { willReadFrequently: true }); ctx.drawImage(src, 0, 0, w, h);
   const d = ctx.getImageData(0, 0, w, h).data, g = new Uint8ClampedArray(w * h);
   for (let i = 0; i < g.length; i++) g[i] = 0.299 * d[4 * i] + 0.587 * d[4 * i + 1] + 0.114 * d[4 * i + 2];
   cv.hidden = false; const r = scanSheet(g, w, h, ex, ctx);
-  if (r.err) { $("review").hidden = true; return flash(r.err); }
+  if (r.err) { $("review").hidden = true; if (auto) status(r.err, "warn"); flash(r.err); return false; }
   const items = itemsOf(ex);
   R = { ex, items, answers: r.answers, manual: items.map(() => null), flags: r.flags };
   $("reviewNote").hidden = true; $("review").hidden = false; $("scId").value = ""; $("scHint").textContent = ""; fillStudents(); drawReview();
   if (r.flags.some(Boolean)) flash("Some answers are uncertain (highlighted). Check them against the paper before saving.");
   else if (items.some((i) => !isAuto(i.type))) flash("Scanned. Now mark the identification and essay items below.", 1);
+  if (stream) AUTO.paused = true;   // a sheet is on screen for review: do not replace it until it is saved or "Rescan" is pressed
+  return true;
 }
 function fillStudents(keepId) {
   const sec = $("scSec").value, list = S.students.filter((s) => !sec || s.classId === sec).sort(byName);
@@ -612,7 +694,7 @@ $("scSave").onclick = () => run(async () => {
       answers: R.answers, manual: R.manual, ...sc, ...extras(R.ex, missed), reviewedFlags: R.flags.filter(Boolean).length, scannedAt: serverTimestamp() };
     if (R.editing) await setDoc(ref, payload, { merge: true }); // keeps the online fields (typed answers, time, "online" mark)
     else await setDoc(ref, payload);
-    flash(`Saved result for ${stu.name}.`, 1); $("review").hidden = true; $("cv").hidden = true;
+    flash(`Saved result for ${stu.name}.`, 1); $("review").hidden = true; $("cv").hidden = true; R = null; resumeAuto("Saved. Place the next answer sheet in view.");
   } finally { $("scSave").disabled = false; }
 });
 

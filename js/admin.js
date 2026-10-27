@@ -1,8 +1,8 @@
-import { requireRole, logout, db, esc, friendlyError, app, staffEmail, studentEmail, fbPass, defaultStudentPassword, fullName, applyBranding } from "./auth.js";
+import { requireRole, logout, db, esc, friendlyError, app, staffEmail, studentEmail, fbPass, defaultStudentPassword, fullName, applyBranding, cleanEmail, staffKey, studentKey, auth as mainAuth } from "./auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updatePassword, signOut, deleteUser } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updatePassword, signOut, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   collection, query, where, orderBy, limit, getDocs, getCountFromServer,
   doc, setDoc, updateDoc, deleteDoc, addDoc, serverTimestamp
@@ -78,10 +78,11 @@ function renderTeachers() {
   $("teachers").innerHTML = `<tr><th>Name</th><th>Role</th><th>Username</th><th>Status</th><th>Created</th><th></th></tr>` +
     (rows.length ? rows.map((t) => { const stu = t.role === "student"; return `<tr>
       <td>${esc(t.displayName)}</td><td>${stu ? "student" : "faculty / teacher"}</td>
-      <td>${stu ? "Exam ID No. " + esc(t.studentId) : esc(school.code) + " / " + esc(t.employeeId)}</td>
+      <td>${stu ? "Exam ID No. " + esc(t.studentId) : esc(school.code) + " / " + esc(t.employeeId)}${t.hasRealEmail ? `<small>${esc(t.email)}</small>` : ""}</td>
       <td><span class="badge ${esc(t.status)}">${esc(t.status)}</span></td><td>${fmt(t.createdAt)}</td>
       <td class="actions">
         <button class="btn small" data-act="toggle" data-uid="${esc(t.uid)}">${t.status === "active" ? "Suspend" : "Reactivate"}</button>
+        ${t.hasRealEmail ? `<button class="btn small" data-act="mail" data-uid="${esc(t.uid)}">Email reset link</button>` : ""}
         <button class="btn small" data-act="reset" data-uid="${esc(t.uid)}">Reset password</button>
         <button class="btn small" data-act="setpw" data-uid="${esc(t.uid)}">Set password</button>
         <button class="btn small danger" data-act="remove" data-uid="${esc(t.uid)}">Remove account</button>
@@ -95,6 +96,8 @@ $("newT").addEventListener("submit", async (e) => {
   const f = Object.fromEntries(new FormData(e.target));
   const lastName = f.lastName.trim(), firstName = f.firstName.trim(), mi = (f.mi || "").trim().slice(0, 1).toUpperCase(), employeeId = f.employeeId.trim(), birthday = f.birthday;
   if (!lastName || !firstName || !employeeId || !birthday) return flash("Enter the last name, first name, Employee No. and birthday.");
+  const realEmail = cleanEmail(f.email);
+  if ((f.email || "").trim() && !realEmail) return flash("That email address is not valid. Fix it or leave it blank.");
   const pw = defaultStudentPassword({ birthday, lastName });
   if (!pw) return flash("The birthday is not valid.");
   $("addBtn").disabled = true;
@@ -104,20 +107,22 @@ $("newT").addEventListener("submit", async (e) => {
   try {
     const dup = await getDocs(query(collection(db, "users"), where("schoolId", "==", SID), where("employeeId", "==", employeeId), limit(1)));
     if (!dup.empty) throw new Error("That Employee No. is already registered in this school.");
-    const email = staffEmail(school.code, employeeId);
+    // A real email becomes the Firebase login (password reset goes to it); otherwise the internal staff address is used.
+    const email = realEmail || staffEmail(school.code, employeeId);
     cred = await createUserWithEmailAndPassword(getAuth(second), email, fbPass(pw));
     const uid = cred.user.uid;
     try {
       await setDoc(doc(db, "users", uid), {
         uid, role: "teacher", displayName: fullName(lastName, firstName, mi), lastName, firstName, middleInitial: mi,
         email, employeeId, birthday, schoolId: SID, schoolName: school.name, status: "active",
-        mustChangePassword: true, createdAt: serverTimestamp(), createdBy: user.uid,
+        mustChangePassword: true, createdAt: serverTimestamp(), createdBy: user.uid, ...(realEmail ? { hasRealEmail: true } : {}),
       });
-    } catch (err) { await deleteUser(cred.user).catch(() => {}); throw err; }
-    await logAudit("teacher.create", uid, { username: employeeId });
+      if (realEmail) await setDoc(doc(db, "loginIndex", staffKey(school.code, employeeId)), { email, uid, role: "teacher", schoolId: SID, createdBy: user.uid, createdAt: serverTimestamp() });
+    } catch (err) { await deleteDoc(doc(db, "users", uid)).catch(() => {}); await deleteUser(cred.user).catch(() => {}); throw err; }
+    await logAudit("teacher.create", uid, { username: employeeId, ...(realEmail ? { email: realEmail } : {}) });
     await signOut(getAuth(second));
     e.target.reset();
-    popup("Teacher account created", `Sign-in: school code ${school.code}, Employee No. ${employeeId}. Temporary password (birth year + first letter of last name). They must choose a new one at first sign-in.`, pw);
+    popup("Teacher account created", `Sign-in: school code ${school.code}, Employee No. ${employeeId}${realEmail ? ` (or the email ${realEmail})` : ""}. Temporary password (birth year + first letter of last name). They must choose a new one at first sign-in.` + (realEmail ? ` Forgot-password links go to ${realEmail}.` : " No email was given, so password help goes through you."), pw);
     await refresh();
   } catch (err) { flash(friendlyError(err)); }
   finally { $("addBtn").disabled = false; deleteApp(second).catch(() => {}); }
@@ -193,6 +198,7 @@ async function removeAccount(u) {
     if (!fnMissing(err)) throw err;
     if (!ask("The removal service is not set up yet (README step G), so the login itself cannot be deleted from here.\n\nRemove their access now anyway? You can then delete the login in Firebase console > Authentication > Users.")) return;
     await deleteDoc(doc(db, "users", u.uid));
+    if (u.hasRealEmail) await deleteDoc(doc(db, "loginIndex", stu ? studentKey(u.studentId) : staffKey(school.code, u.employeeId))).catch(() => {});
     await logAudit(u.role + ".profile_removed", u.uid, { username: userOf(u) });
     popup("Access removed", `${u.displayName} can no longer use the system. To also delete the login: Firebase console > Authentication > Users > find ${u.email} > Delete account.`);
   }
@@ -204,6 +210,12 @@ $("teachers").addEventListener("click", async (e) => {
   try {
     if (b.dataset.act === "remove") { await removeAccount(t); await refresh(); return; }
     if (b.dataset.act === "setpw") { await setCustomPassword(t); return; }
+    if (b.dataset.act === "mail") {
+      if (!ask(`Send a password-reset link to ${t.email}? ${t.displayName} can then choose a new password from their own inbox.`)) return;
+      await sendPasswordResetEmail(mainAuth, t.email);
+      await logAudit(t.role + ".reset_email_sent", t.uid, { username: userOf(t) });
+      return flash(`Reset link sent to ${t.email}.`, true);
+    }
     if (b.dataset.act === "reset") {
       if (!ask(`Reset the password of ${t.displayName} to birth year + first letter of last name? Their current password will stop working.`)) return;
       await resetToDefault(t);

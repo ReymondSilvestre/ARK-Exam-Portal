@@ -97,42 +97,100 @@ export function sheetSVG(ex, o = {}) {
 }
 
 /* ---------- scanner ---------- */
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+const EXPECT = (G.mk[2][1] - G.mk[0][1]) / (G.mk[1][0] - G.mk[0][0]); // sheet height / width, measured between the corner squares
+
+/** Finds the four black corner squares ANYWHERE in the picture (the sheet no longer has to fill the frame).
+ *  g = grayscale pixels, w x h. Returns { pts: [TL, TR, BL, BR] (pixel centres), cover } or { err, seen } where
+ *  `seen` = how many square-looking blobs were found (used for the on-screen hint).
+ *  Uses a LOCAL threshold, so shadows and uneven light on the paper do not hide the squares. */
+export function findCorners(g, w, h) {
+  const big = Math.max(w, h), half = Math.max(8, Math.round(big * 0.05));
+  // integral image -> local mean in a (2*half+1) square window
+  const W1 = w + 1, I = new Float64Array(W1 * (h + 1));
+  for (let y = 0; y < h; y++) { let row = 0; for (let x = 0; x < w; x++) { row += g[y * w + x]; I[(y + 1) * W1 + x + 1] = I[y * W1 + x + 1] + row; } }
+  const mask = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const y0 = Math.max(0, y - half), y1 = Math.min(h, y + half + 1);
+    for (let x = 0; x < w; x++) {
+      const x0 = Math.max(0, x - half), x1 = Math.min(w, x + half + 1);
+      const m = (I[y1 * W1 + x1] - I[y0 * W1 + x1] - I[y1 * W1 + x0] + I[y0 * W1 + x0]) / ((x1 - x0) * (y1 - y0)), v = g[y * w + x];
+      if (v < m * 0.72 && m - v > 24) mask[y * w + x] = 1;
+    }
+  }
+  // connected dark blobs that look like a solid square
+  const seen = new Uint8Array(w * h), stack = new Int32Array(w * h), cand = [];
+  const maxSide = big * 0.2, minSide = Math.max(5, big * 0.008);
+  for (let i0 = 0; i0 < w * h; i0++) {
+    if (!mask[i0] || seen[i0]) continue;
+    let sp = 0, a = 0, sx = 0, sy = 0, mnx = w, mxx = 0, mny = h, mxy = 0;
+    stack[sp++] = i0; seen[i0] = 1;
+    while (sp) {
+      const i = stack[--sp], x = i % w, y = (i - x) / w; a++; sx += x; sy += y;
+      if (x < mnx) mnx = x; if (x > mxx) mxx = x; if (y < mny) mny = y; if (y > mxy) mxy = y;
+      if (x > 0 && mask[i - 1] && !seen[i - 1]) { seen[i - 1] = 1; stack[sp++] = i - 1; }
+      if (x < w - 1 && mask[i + 1] && !seen[i + 1]) { seen[i + 1] = 1; stack[sp++] = i + 1; }
+      if (y > 0 && mask[i - w] && !seen[i - w]) { seen[i - w] = 1; stack[sp++] = i - w; }
+      if (y < h - 1 && mask[i + w] && !seen[i + w]) { seen[i + w] = 1; stack[sp++] = i + w; }
+    }
+    const bw = mxx - mnx + 1, bh = mxy - mny + 1;
+    if (bw < minSide || bh < minSide || bw > maxSide || bh > maxSide) continue;
+    if (mnx === 0 || mny === 0 || mxx === w - 1 || mxy === h - 1) continue;      // cut off by the edge of the picture
+    if (bw / bh < 0.6 || bw / bh > 1.67 || a / (bw * bh) < 0.85) continue;        // not a solid square (a shaded bubble is a circle: about 0.78)
+    cand.push({ x: sx / a, y: sy / a, a });
+  }
+  cand.sort((p, q) => q.a - p.a); cand.length = Math.min(cand.length, 36);
+  // choose the 4 that form a sheet-shaped rectangle: TL, TR, BL, then BR where it should be
+  let best = null;
+  for (const A of cand) for (const B of cand) {
+    const dx = B.x - A.x; if (dx < big * 0.08 || Math.abs(B.y - A.y) > 0.35 * dx) continue;
+    for (const C of cand) {
+      if (C === A || C === B) continue;
+      const dy = C.y - A.y; if (dy <= 0 || Math.abs(C.x - A.x) > 0.35 * dy) continue;
+      const ab = Math.hypot(dx, B.y - A.y), ac = Math.hypot(C.x - A.x, dy), r = ac / ab;
+      if (r < EXPECT * 0.78 || r > EXPECT * 1.28) continue;
+      const px = B.x + C.x - A.x, py = B.y + C.y - A.y;
+      for (const D of cand) {
+        if (D === A || D === B || D === C) continue;
+        const err = Math.hypot(D.x - px, D.y - py) / ab; if (err > 0.22) continue;
+        const aMin = Math.min(A.a, B.a, C.a, D.a), aMax = Math.max(A.a, B.a, C.a, D.a); if (aMax > aMin * 3.2) continue;
+        // the squares must be the size they are printed at (8 mm) relative to the sheet: this rejects shaded bubbles and stray dark objects
+        const side = Math.sqrt((A.a + B.a + C.a + D.a) / 4), want = G.mkSize * ab / (G.mk[1][0] - G.mk[0][0]);
+        if (side < want * 0.65 || side > want * 1.4) continue;
+        const area = ab * ac, score = -area * (1 - 2.5 * err);   // the biggest well-formed rectangle wins
+        if (!best || score < best.score) best = { score, pts: [[A.x, A.y], [B.x, B.y], [C.x, C.y], [D.x, D.y]], area };
+      }
+    }
+  }
+  if (!best) return { err: "Could not find all 4 corner squares. Keep the whole sheet in view (one sheet only), flat, upright and well lit.", seen: cand.length };
+  return { pts: best.pts, cover: best.area / (w * h) };
+}
+
+/** Decides WHEN to take the picture. Feed it one detection per camera frame (findCorners result or null).
+ *  It says "ready" once the whole sheet has been in view, big enough and holding still for `holdMs`. Pure (no DOM), so it can be tested. */
+export class SheetTracker {
+  constructor({ holdMs = 800, minFrames = 4, minCover = 0.25, tol = 0.015 } = {}) { Object.assign(this, { holdMs, minFrames, minCover, tol }); this.reset(); }
+  reset() { this.anchor = null; this.since = 0; this.frames = 0; }
+  /** state: none (no sheet) | far (sheet found but too small) | moving | steady (counting down) | ready */
+  update(det, w, h, now) {
+    if (!det || !det.pts) { this.reset(); return { state: "none", progress: 0, seen: det?.seen || 0 }; }
+    const pts = det.pts, diag = Math.hypot(w, h);
+    if (det.cover < this.minCover) { this.reset(); return { state: "far", progress: 0, pts }; }
+    const drift = this.anchor ? Math.max(...pts.map((p, i) => dist(p, this.anchor[i]))) / diag : 1;
+    if (drift > this.tol) { this.anchor = pts; this.since = now; this.frames = 1; return { state: "moving", progress: 0, pts }; }
+    this.frames++;
+    const progress = Math.min(1, (now - this.since) / this.holdMs, this.frames / this.minFrames);
+    return { state: progress >= 1 ? "ready" : "steady", progress, pts };
+  }
+}
+
 /** g = grayscale pixels, w x h. ctx (optional) gets red debug circles. Returns {answers, flags} or {err}. */
 export function scanSheet(g, w, h, ex, ctx) {
   const items = itemsOf(ex), lay = layout(items.length);
-  // Otsu threshold
-  const hist = new Array(256).fill(0); g.forEach((v) => hist[v]++);
-  let sum = 0; for (let i = 0; i < 256; i++) sum += i * hist[i];
-  let sB = 0, wB = 0, best = 0, T = 128;
-  for (let i = 0; i < 256; i++) {
-    wB += hist[i]; const wF = g.length - wB; if (!wB) continue; if (!wF) break; sB += i * hist[i];
-    const b = wB * wF * (sB / wB - (sum - sB) / wF) ** 2; if (b > best) { best = b; T = i; }
-  }
-  // Find the four corner squares (one dark square in each image corner region).
-  const pts = [];
-  for (const [cx, cy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
-    const x0 = cx ? Math.floor(w * 0.6) : 0, x1 = cx ? w : Math.ceil(w * 0.4), y0 = cy ? Math.floor(h * 0.6) : 0, y1 = cy ? h : Math.ceil(h * 0.4);
-    const rw = x1 - x0, seen = new Uint8Array(rw * (y1 - y0)); let pick = null, pd = 1e12;
-    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-      const id = (y - y0) * rw + (x - x0); if (seen[id] || g[y * w + x] >= T) continue;
-      const st = [x, y]; seen[id] = 1; let a = 0, sx = 0, sy = 0, mnx = x, mxx = x, mny = y, mxy = y;
-      while (st.length) {
-        const py = st.pop(), px = st.pop(); a++; sx += px; sy += py; mnx = Math.min(mnx, px); mxx = Math.max(mxx, px); mny = Math.min(mny, py); mxy = Math.max(mxy, py);
-        for (const [nx, ny] of [[px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]]) {
-          if (nx < x0 || nx >= x1 || ny < y0 || ny >= y1) continue;
-          const j = (ny - y0) * rw + (nx - x0); if (!seen[j] && g[ny * w + nx] < T) { seen[j] = 1; st.push(nx, ny); }
-        }
-      }
-      const bw = mxx - mnx + 1, bh = mxy - mny + 1;
-      if (a > 80 && bw < w * 0.15 && bw / bh > 0.6 && bw / bh < 1.6 && a / (bw * bh) > 0.75) {
-        const dd = (sx / a - (cx ? w : 0)) ** 2 + (sy / a - (cy ? h : 0)) ** 2; if (dd < pd) { pd = dd; pick = [sx / a, sy / a]; }
-      }
-    }
-    if (!pick) return { err: "Could not find all 4 corner squares. Keep the whole sheet in view (one sheet only), flat, upright and well lit." };
-    pts.push(pick);
-  }
-  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
-  const exp = (G.mk[2][1] - G.mk[0][1]) / (G.mk[1][0] - G.mk[0][0]), ratio = dist(pts[0], pts[2]) / dist(pts[0], pts[1]);
+  const found = findCorners(g, w, h);
+  if (found.err) return { err: found.err };
+  const pts = found.pts;
+  const exp = EXPECT, ratio = dist(pts[0], pts[2]) / dist(pts[0], pts[1]);
   if (ratio < exp * 0.8 || ratio > exp * 1.25) return { err: "The sheet looks rotated or badly angled. Hold it upright (portrait) and try again." };
 
   // Homography: sheet millimetres -> image pixels

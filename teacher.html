@@ -25,14 +25,15 @@
 <label>First name<input id="stFirst" autocomplete="off"></label>
 <label class="narrow">M.I.<input id="stMi" maxlength="1" autocomplete="off"></label></div>
 <div class="row" style="margin-top:.6rem"><label>Birthday<input type="date" id="stBday"></label>
+<label>Email <small>Optional. Password reset goes here.</small><input type="email" id="stEmail" autocomplete="off" placeholder="student@example.com"></label>
 <label class="narrow">Age<input id="stAge" readonly tabindex="-1"><small>Automatic</small></label>
 <label>Exam ID No.<input id="stNext" readonly value="Created automatically"><small>Also the student's username.</small></label>
 <button class="btn primary" id="stAdd">Add student</button></div>
 <div class="row" style="margin-top:.8rem"><label>Import a class list (Excel or CSV)
 <input type="file" id="stCsv" accept=".csv,.txt,.xlsx,.xls">
-<small>Columns: <b>Exam ID No.</b>, <b>Last Name</b>, <b>First Name</b>, <b>M.I.</b>, <b>Birthday</b> (YYYY-MM-DD). A blank Exam ID No. is created automatically. A single "Last, First M." column also works.</small></label></div>
+<small>Columns: <b>Exam ID No.</b>, <b>Last Name</b>, <b>First Name</b>, <b>M.I.</b>, <b>Birthday</b> (YYYY-MM-DD), <b>Email</b> (optional). A blank Exam ID No. is created automatically. A single "Last, First M." column also works.</small></label></div>
 <h3>Student logins</h3>
-<p class="muted fine">Username = Exam ID No. Temporary password = birth year + first letter of the last name (example <b>2012D</b>). The student must choose a new password at first sign-in.</p>
+<p class="muted fine">Username = Exam ID No. Temporary password = birth year + first letter of the last name (example <b>2012D</b>). The student must choose a new password at first sign-in. If you entered the student's <b>real email</b>, the login is created with that email: the student can still sign in with the Exam ID No., and <b>Forgot your password?</b> sends the reset link to the email. Enter the email <b>before</b> creating the login.</p>
 <div class="row"><button class="btn" id="stLogins">Create logins for everyone in this section</button></div>
 <div class="listbar noprint"><h3>Class list</h3>
 <div class="fpop" id="stFilter"><button type="button" class="btn small iconbtn" aria-haspopup="true" aria-expanded="false" title="Filter and sort the class list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18l-7 8.5V19l-4 2v-8.5z"/></svg><span>Filter</span></button>
@@ -124,14 +125,16 @@
 <!-- SCANNER -->
 <section data-s="scan" hidden><div class="panel"><h2>Scan answer sheets</h2>
 <div class="row"><label>Examination<select id="scExam"></select></label><label>Section<select id="scSec"></select></label>
-<button class="btn" id="camBtn">Start camera</button><button class="btn primary" id="capBtn" disabled>Capture</button>
+<button class="btn" id="camBtn">Start camera</button><button class="btn" id="capBtn" disabled>Capture now</button>
+<label class="chk"><input type="checkbox" id="autoCap" checked> Auto-capture</label>
 <label>or upload photo<input type="file" id="file" accept="image/*" capture="environment"></label></div>
-<video id="vid" class="vid" playsinline autoplay muted hidden></video>
+<p class="muted fine" id="scTip">Start the camera and hold ONE answer sheet in view, upright, with all 4 black corner squares visible. It is detected automatically and photographed as soon as it is steady.</p>
+<div class="vidwrap" id="vidwrap" hidden><video id="vid" class="vid" playsinline autoplay muted></video><canvas id="ovl" class="ovl"></canvas><div id="scStatus" class="scstat" role="status" aria-live="polite"></div></div>
 <canvas id="cv" hidden></canvas>
 <div id="review" hidden><p id="reviewNote" class="muted" hidden></p>
 <div class="row" style="margin-top:.8rem"><label>Exam ID No. (type it from the sheet)<input id="scId" autocomplete="off"><small id="scHint"></small></label>
 <label>Student<select id="scStu"></select></label>
-<button class="btn primary" id="scSave">Save result</button></div>
+<button class="btn primary" id="scSave">Save result</button><button class="btn" id="scAgain" type="button">Rescan this sheet</button></div>
 <p id="sum"><b></b></p><div class="q" id="grid"></div>
 <div id="typedBox" hidden><h3>Written answers from the student</h3><div id="typedList"></div></div></div></div></section>
 
