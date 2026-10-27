@@ -19,7 +19,7 @@
 
   <section id="reset" hidden>
     <h1>Request a password reset</h1>
-    <p class="muted">Your request goes to the IT Administrator. Once approved, a secure reset link is emailed to you.</p>
+    <p class="muted">Your request goes to the IT Administrator, who will give you a temporary password or email you a reset link.</p>
     <form id="rq" novalidate>
       <label>Your account email<input id="rqEmail" type="email" autocomplete="email" required></label>
       <label>Employee ID <small>Optional, but it helps the administrator confirm it is you.</small>
@@ -58,7 +58,7 @@ $("rq").addEventListener("submit", async (e) => {
   try {
     await requestPasswordReset(email, $("rqEmp").value);
     try { localStorage.setItem(key, String(Date.now())); } catch {}
-    view("signin"); show("Request sent. The IT Administrator will email a reset link to the address on your account.", true);
+    view("signin"); show("Request sent. The IT Administrator will give you a temporary password or email a reset link.", true);
   } catch (err) { show("Could not send the request. Check your connection and try again."); }
   finally { $("rqGo").disabled = false; }
 });

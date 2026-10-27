@@ -1,4 +1,5 @@
-import { requireRole, logout, db, esc, friendlyError, resetPassword } from "./auth.js";
+import { requireRole, logout, db, esc, friendlyError, resetPassword, app } from "./auth.js";
+import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -64,10 +65,23 @@ function renderTeachers() {
       <td><span class="badge ${esc(t.status)}">${esc(t.status)}</span></td><td>${fmt(t.createdAt)}</td>
       <td class="actions">
         <button class="btn small" data-act="toggle" data-uid="${esc(t.uid)}">${t.status === "active" ? "Suspend" : "Reactivate"}</button>
+        <button class="btn small" data-act="temp" data-uid="${esc(t.uid)}">Set temp password</button>
         <button class="btn small" data-act="reset" data-uid="${esc(t.uid)}">Email reset link</button>
       </td></tr>`).join("") : `<tr><td colspan="6">No teachers yet. Add one above.</td></tr>`);
 }
 $("q").addEventListener("input", renderTeachers);
+
+/* ---------- temporary password (needs the Cloud Function, see README step G) ---------- */
+async function setTempPassword(t, requestId) {
+  const pw = genPassword();
+  try { await httpsCallable(getFunctions(app), "adminSetTempPassword")({ uid: t.uid, password: pw, requestId: requestId || null }); }
+  catch (err) {
+    if (["functions/not-found", "functions/internal", "functions/unavailable"].includes(err.code))
+      throw new Error('The temporary-password service is not set up yet (README step G). Use "Email reset link" for now.');
+    throw err;
+  }
+  popup(`Temporary password for ${t.displayName}`, "Give this to the teacher in person. It is shown only once. They must choose a new password the next time they sign in.", pw);
+}
 
 /* ---------- password reset requests ---------- */
 let requests = [];
@@ -93,7 +107,8 @@ function renderRequests() {
     (requests.length ? requests.map((r) => { const m = matchOf(r), open = r.status === "pending"; return `<tr>
       <td>${fmt(r.createdAt)}</td><td>${esc(r.email)}</td><td>${esc(r.employeeId || "-")}</td><td>${badge(m)}</td>
       <td><span class="badge ${open ? "warn" : "active"}">${esc(r.status)}</span></td>
-      <td class="actions">${open ? `<button class="btn small primary" data-act="send" data-id="${esc(r.id)}" ${m.t ? "" : "disabled"}>Send reset link</button>
+      <td class="actions">${open ? `<button class="btn small primary" data-act="temp" data-id="${esc(r.id)}" ${m.t ? "" : "disabled"}>Set temporary password</button>
+        <button class="btn small" data-act="send" data-id="${esc(r.id)}" ${m.t ? "" : "disabled"}>Email reset link</button>
         <button class="btn small" data-act="dismiss" data-id="${esc(r.id)}">Dismiss</button>` : ""}</td></tr>`; }).join("")
       : `<tr><td colspan="6">No requests yet.</td></tr>`);
 }
@@ -102,7 +117,12 @@ $("reqTbl").addEventListener("click", async (e) => {
   const r = requests.find((x) => x.id === b.dataset.id); if (!r) return;
   const m = matchOf(r);
   try {
-    if (b.dataset.act === "send") {
+    if (b.dataset.act === "temp") {
+      if (!m.t) return;
+      const warn = m.state === "mismatch" ? "The employee ID in the request does NOT match this account. Verify the person first.\n\n" : "";
+      if (!ask(`${warn}Set a new temporary password for ${m.t.displayName} (${m.t.email})? Their current password will stop working.`)) return;
+      await setTempPassword(m.t, r.id);
+    } else if (b.dataset.act === "send") {
       if (!m.t) return;
       const warn = m.state === "mismatch" ? "The employee ID in the request does NOT match this account. Verify the person first.\n\n" : "";
       if (!ask(`${warn}Email a password reset link to ${m.t.email} (${m.t.displayName})?`)) return;
@@ -182,7 +202,10 @@ $("teachers").addEventListener("click", async (e) => {
   const b = e.target.closest("button[data-act]"); if (!b) return;
   const t = teachers.find((x) => x.uid === b.dataset.uid); if (!t) return;
   try {
-    if (b.dataset.act === "toggle") {
+    if (b.dataset.act === "temp") {
+      if (!ask(`Set a new temporary password for ${t.displayName}? Their current password will stop working.`)) return;
+      await setTempPassword(t);
+    } else if (b.dataset.act === "toggle") {
       const next = t.status === "active" ? "suspended" : "active";
       if (!ask(`${next === "suspended" ? "Suspend" : "Reactivate"} ${t.displayName}?`)) return;
       await updateDoc(doc(db, "users", t.uid), { status: next, updatedAt: serverTimestamp() });

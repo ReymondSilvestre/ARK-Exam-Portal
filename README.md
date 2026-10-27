@@ -33,9 +33,19 @@ Authentication > Settings > Authorized domains > Add `USERNAME.github.io`.
 ## F. Test
 Admin signs in > forced password change > dashboard > create teacher (copy temp password) > teacher signs in in a private window > forced change > teacher page > admin suspends teacher > teacher is refused > reactivate.
 
+## G. Optional: temporary password set by the IT Admin (no email)
+Firebase only lets *server code* change another person's password, so this needs one small Cloud Function and the **Blaze** plan (a card is required; school-size use stays inside the free monthly quota, and you can set a budget alert at $1). Until you do this, the admin buttons **Set temporary password** show a message and **Email reset link** keeps working.
+1. Firebase console > upgrade the project to **Blaze**.
+2. On a computer install Node.js (version 20), then in a terminal: `npm install -g firebase-tools` and `firebase login`.
+3. Open a terminal in this project folder and run:
+   `firebase use exam-scanner-ac29e`
+   `cd functions && npm install && cd ..`
+   `firebase deploy --only functions`
+4. Done. In the admin page, **Reset requests > Set temporary password** shows a one-time password. Give it to the teacher in person. Their old password stops working and they must choose a new one at the next sign-in.
+
 ## Free-plan limits and trade-offs
 - Firestore free quota: 1 GiB, 50,000 reads and 20,000 writes per day. Ample for one school.
-- Admin cannot set another user's password; resets go by email link, so teacher emails must be real.
+- Without step G the admin cannot set another user's password; resets go by email link, so teacher emails must be real.
 - If the **admin** forgets their own password, use Firebase console > Authentication > Users > (the admin) > Reset password. The admin cannot use the request button because nobody could approve it.
 - Suspension blocks all data access immediately via rules; the Auth login itself still exists.
 - Stray accounts: anyone could create an Auth login with your public API key, but without an admin-created profile they can read and write nothing.
