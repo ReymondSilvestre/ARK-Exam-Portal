@@ -5,11 +5,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head><body><div class="wrap">
 <div class="top noprint"><div class="brand"><span class="mark">ARK</span><span id="who">Teacher</span></div>
-<span><span id="sync" class="sync"><i class="dot"></i><span>Online</span></span> <button class="btn small" id="out">Sign out</button></span></div>
+<span><a id="adminLink" href="admin.html" class="btn small" hidden>&larr; IT Admin</a> <span id="sync" class="sync"><i class="dot"></i><span>Online</span></span> <button class="btn small" id="out">Sign out</button></span></div>
 <div id="msg" class="notice noprint" hidden role="alert"></div>
 <div class="tabs noprint" id="tabs">
 <button class="btn" data-t="classes">Sections</button><button class="btn" data-t="students">Students</button>
-<button class="btn" data-t="exams">Examinations</button><button class="btn" data-t="sheet">Answer sheets</button>
+<button class="btn" data-t="exams">Examinations</button><button class="btn" data-t="modules">Modules</button><button class="btn" data-t="sheet">Answer sheets</button>
 <button class="btn" data-t="scan">Scanner</button><button class="btn" data-t="results">Results</button></div>
 
 <!-- SECTIONS -->
@@ -20,19 +20,27 @@
 <!-- STUDENTS -->
 <section data-s="students" hidden><div class="panel"><h2>Students</h2>
 <div class="row"><label>Section<select id="stClass"></select></label>
-<label>Full name<input id="stName" autocomplete="off"></label>
-<label>Exam ID No.<input id="stNext" readonly aria-describedby="stNextHelp"><small id="stNextHelp">Created automatically.</small></label>
+<label>Last name<input id="stLast" autocomplete="off"></label>
+<label>First name<input id="stFirst" autocomplete="off"></label>
+<label class="narrow">M.I.<input id="stMi" maxlength="1" autocomplete="off"></label></div>
+<div class="row" style="margin-top:.6rem"><label>Birthday<input type="date" id="stBday"></label>
+<label class="narrow">Age<input id="stAge" readonly tabindex="-1"><small>Automatic</small></label>
+<label>Exam ID No.<input id="stNext" readonly value="Created automatically"><small>Also the student's username.</small></label>
 <button class="btn primary" id="stAdd">Add student</button></div>
 <div class="row" style="margin-top:.8rem"><label>Import a class list (Excel or CSV)
 <input type="file" id="stCsv" accept=".csv,.txt,.xlsx,.xls">
-<small>Columns: <b>Exam ID No.</b>, <b>Name</b>. If the Exam ID No. column is missing or empty, one is created automatically. A file with names only also works.</small></label></div>
+<small>Columns: <b>Exam ID No.</b>, <b>Last Name</b>, <b>First Name</b>, <b>M.I.</b>, <b>Birthday</b> (YYYY-MM-DD). A blank Exam ID No. is created automatically. A single "Last, First M." column also works.</small></label></div>
+<h3>Student logins</h3>
+<p class="muted fine">Username = Exam ID No. Temporary password = birth year + first letter of the last name (example <b>2012D</b>). The student must choose a new password at first sign-in. Students can also sign up themselves from the sign-in page using their Exam ID No. and birthday.</p>
+<div class="row"><button class="btn" id="stLogins">Create logins for everyone in this section</button></div>
 <div class="tablewrap"><table id="stTbl"></table></div></div></section>
 
 <!-- EXAMINATIONS -->
 <section data-s="exams" hidden><div class="panel"><h2 id="exHead">New examination</h2>
 <div class="row"><label>Title<input id="exTitle"></label><label>Subject<input id="exSub"></label>
+<label>Term / quarter<select id="exTerm"></select></label>
 <label>Section<select id="exClass"></select></label><label>Date<input type="date" id="exDate"></label></div>
-<div class="row" style="margin-top:.8rem"><label>Number of items<input type="number" id="exN" min="1" max="60" value="20"></label>
+<div class="row" style="margin-top:.8rem"><label>Number of items<input type="number" id="exN" min="1" max="100" value="20"></label>
 <label>Multiple choice letters<select id="exCh"><option value="5">A-E</option><option value="4">A-D</option></select></label>
 <label>Passing %<input type="number" id="exPass" value="75" min="1" max="100"></label></div>
 
@@ -49,7 +57,18 @@
 <div class="items" id="exItems"></div>
 <div class="row" style="margin-top:1rem"><button class="btn primary" id="exAdd">Save exam</button><button class="btn" id="exCancel" hidden>Cancel editing</button></div>
 </div>
-<div class="panel"><div class="tablewrap"><table id="exTbl"></table></div></div></section>
+<div class="panel"><div class="row"><label>Show<select id="exFilter"></select></label></div><div class="tablewrap"><table id="exTbl"></table></div></div></section>
+
+<!-- MODULES -->
+<section data-s="modules" hidden><div class="panel"><h2>Upload a module</h2>
+<p class="muted fine">Students see modules for their own section (or for all your sections), organised by term / quarter.</p>
+<div class="row"><label>Title<input id="mdTitle" maxlength="120"></label><label>Term / quarter<select id="mdTerm"></select></label><label>Section<select id="mdClass"></select></label></div>
+<div class="row" style="margin-top:.6rem"><label>Description (optional)<input id="mdDesc" maxlength="300"></label></div>
+<div class="row" style="margin-top:.6rem"><label>File (PDF, Word, PowerPoint, image... up to 8 MB)<input type="file" id="mdFile"></label>
+<label>or a link (Google Drive, YouTube...)<input id="mdUrl" type="url" placeholder="https://"></label>
+<button class="btn primary" id="mdAdd">Upload module</button></div>
+<progress id="mdProg" max="1" value="0" hidden></progress></div>
+<div class="panel"><div class="row"><label>Show<select id="mdFilter"></select></label></div><div class="tablewrap"><table id="mdTbl"></table></div></div></section>
 
 <!-- ANSWER SHEETS -->
 <section data-s="sheet" hidden><div class="panel"><h2 class="noprint">Answer sheets</h2>

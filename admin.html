@@ -7,9 +7,10 @@
     <div class="brand"><span class="mark">ARK</span><span>IT Admin</span></div>
     <nav>
       <a href="#dashboard" data-v="dashboard">Dashboard</a>
-      <a href="#teachers" data-v="teachers">Teachers</a>
+      <a href="#teachers" data-v="teachers">Accounts</a>
       <a href="#requests" data-v="requests">Reset requests <span class="count" id="reqCount" hidden>0</span></a>
       <a href="#activity" data-v="activity">Activity log</a>
+      <a href="teacher.html" class="tools">Teacher tools &rarr;</a>
     </nav>
     <div class="who"><span id="who"></span><button class="btn" id="out">Sign out</button></div>
   </aside>
@@ -22,7 +23,8 @@
     <section data-view="dashboard">
       <div class="cards">
         <div class="stat"><b id="s-teachers">-</b><span>Total teachers</span></div>
-        <div class="stat"><b id="s-active">-</b><span>Active accounts</span></div>
+        <div class="stat"><b id="s-active">-</b><span>Active teachers</span></div>
+        <div class="stat"><b id="s-students">-</b><span>Student accounts</span></div>
         <div class="stat warn"><b id="s-req">-</b><span>Pending reset requests</span></div>
         <div class="stat"><b id="s-exams">-</b><span>Total examinations</span></div>
         <div class="stat"><b id="s-scans">-</b><span>Scanned answer sheets</span></div>
@@ -33,6 +35,7 @@
     <section data-view="teachers" hidden>
       <div class="panel">
         <h2>Add a teacher</h2>
+        <p class="muted">Teachers can also create their own account from the sign-in page. Students are added by their teacher.</p>
         <form id="newT" class="row" novalidate>
           <label>Full name<input name="displayName" required></label>
           <label>Email<input name="email" type="email" required></label>
@@ -42,7 +45,8 @@
         <small>A one-time temporary password is generated. The teacher must replace it at first sign-in.</small>
       </div>
       <div class="panel">
-        <div class="row"><label>Search<input id="q" placeholder="Name, email or employee ID"></label></div>
+        <div class="row"><label>Search<input id="q" placeholder="Name, email, employee ID or Exam ID No."></label>
+          <label>Show<select id="roleF"><option value="">Teachers and students</option><option value="teacher">Teachers only</option><option value="student">Students only</option></select></label></div>
         <div class="tablewrap"><table id="teachers"></table></div>
       </div>
     </section>
