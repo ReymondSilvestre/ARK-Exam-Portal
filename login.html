@@ -1,0 +1,124 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in - ARK Exam Scanner</title><link rel="stylesheet" href="css/style.css"></head>
+<body class="auth-page">
+<script>
+/* If the module below cannot start (a js file is missing or an old copy), say so instead of silently reloading. */
+document.addEventListener("submit", function (e) {
+  if (window.__arkReady) return;
+  e.preventDefault();
+  var m = document.getElementById("msg");
+  m.textContent = "The page scripts did not load. Upload the whole js folder from the new zip (auth.js, files.js, firebase-config.js, omr.js, admin.js, teacher.js, student.js), then hard refresh with Ctrl+Shift+R.";
+  m.className = "notice err"; m.hidden = false;
+}, true);
+</script>
+<main class="auth-card">
+  <div class="brand"><span class="mark">ARK</span><span>Exam Scanner</span></div>
+  <div id="msg" class="notice" hidden role="alert"></div>
+
+  <section id="signin">
+    <h1>Sign in</h1>
+    <p class="muted">Teachers: your email. Students: your Exam ID No. (for example 2026-0001).</p>
+    <form id="f" novalidate>
+      <label>Email or Exam ID No.<input id="email" autocomplete="username" autocapitalize="none" required></label>
+      <label>Password<input id="pw" type="password" autocomplete="current-password" required>
+        <small>First time as a student: your birth year + the first letter of your last name (example 2012D).</small></label>
+      <button class="btn primary block" id="go">Sign in</button>
+    </form>
+    <button class="link" id="toSignup" type="button">New here? Create an account</button><br>
+    <button class="link" id="forgot" type="button">Forgot your password?</button>
+  </section>
+
+  <section id="signup" hidden>
+    <h1>Create an account</h1>
+    <div class="tabs seg" role="tablist">
+      <button class="btn on" type="button" id="tabT">I am a teacher</button>
+      <button class="btn" type="button" id="tabS">I am a student</button>
+    </div>
+    <form id="suT" novalidate>
+      <label>Full name<input id="tName" autocomplete="name" required></label>
+      <label>Email<input id="tEmail" type="email" autocomplete="email" required></label>
+      <label>Employee ID<input id="tEmp" autocomplete="off" required></label>
+      <label>Temporary password<input id="tPw" type="password" autocomplete="new-password" minlength="10" required>
+        <small>At least 10 characters with a letter and a number. You will be asked to choose a new one right after.</small></label>
+      <button class="btn primary block" id="tGo">Create teacher account</button>
+    </form>
+    <form id="suS" hidden novalidate>
+      <label>Exam ID No.<input id="sId" autocomplete="off" required><small>Printed on your answer sheet. Ask your teacher if you do not know it.</small></label>
+      <label>Birthday<input id="sBday" type="date" required></label>
+      <label>Temporary password<input id="sPw" type="password" autocomplete="new-password" minlength="6" required>
+        <small>At least 6 characters. You will be asked to choose a new one right after.</small></label>
+      <button class="btn primary block" id="sGo">Create student account</button>
+    </form>
+    <button class="link" id="back1" type="button">Back to sign in</button>
+  </section>
+
+  <section id="reset" hidden>
+    <h1>Forgot your password?</h1>
+    <p class="muted"><b>Students:</b> ask your teacher to reset it. <b>Teachers:</b> send a request below. The IT Administrator will give you a temporary password or email a reset link.</p>
+    <form id="rq" novalidate>
+      <label>Your account email<input id="rqEmail" type="email" autocomplete="email" required></label>
+      <label>Employee ID <small>Optional, but it helps the administrator confirm it is you.</small>
+        <input id="rqEmp" autocomplete="off"></label>
+      <button class="btn primary block" id="rqGo">Send request to IT Admin</button>
+    </form>
+    <button class="link" id="back2" type="button">Back to sign in</button>
+  </section>
+</main>
+<script type="module">
+import { auth, login, requestPasswordReset, signUpTeacher, signUpStudent, friendlyError, destinationFor } from "./js/auth.js";
+window.__arkReady = true;
+const $ = (id) => document.getElementById(id), msg = $("msg");
+const show = (t, ok) => { msg.textContent = t; msg.hidden = false; msg.className = "notice " + (ok ? "ok" : "err"); };
+const view = (v) => { for (const s of ["signin", "signup", "reset"]) $(s).hidden = s !== v; msg.hidden = true; };
+if (new URLSearchParams(location.search).has("denied")) show("Your account does not have access to that page.");
+
+async function go(user) { location.href = await destinationFor(user); }
+
+$("f").addEventListener("submit", async (e) => {
+  e.preventDefault(); msg.hidden = true; $("go").disabled = true;
+  let c;
+  try { c = await login($("email").value, $("pw").value); } catch (err) { show(friendlyError(err)); $("go").disabled = false; return; }
+  try { await go(c.user); } catch (err) { await auth.signOut(); show(err.message); $("go").disabled = false; }
+});
+$("toSignup").onclick = () => view("signup");
+$("forgot").onclick = () => { const v = $("email").value.trim(); $("rqEmail").value = v.includes("@") ? v : ""; view("reset"); };
+$("back1").onclick = $("back2").onclick = () => view("signin");
+
+const role = (t) => { $("suT").hidden = !t; $("suS").hidden = t; $("tabT").classList.toggle("on", t); $("tabS").classList.toggle("on", !t); msg.hidden = true; };
+$("tabT").onclick = () => role(true); $("tabS").onclick = () => role(false);
+
+$("suT").addEventListener("submit", async (e) => {
+  e.preventDefault(); msg.hidden = true;
+  const displayName = $("tName").value.trim(), email = $("tEmail").value.trim().toLowerCase(), employeeId = $("tEmp").value.trim(), password = $("tPw").value;
+  if (displayName.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !employeeId) return show("Enter your name, a valid email and your employee ID.");
+  if (password.length < 10 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) return show("Use at least 10 characters with a letter and a number.");
+  $("tGo").disabled = true;
+  try { const u = await signUpTeacher({ displayName, email, employeeId, password }); await go(u); }
+  catch (err) { show(friendlyError(err)); $("tGo").disabled = false; }
+});
+$("suS").addEventListener("submit", async (e) => {
+  e.preventDefault(); msg.hidden = true;
+  const examId = $("sId").value.trim(), birthday = $("sBday").value, password = $("sPw").value;
+  if (!examId || !birthday) return show("Enter your Exam ID No. and your birthday.");
+  if (password.length < 6) return show("The temporary password needs at least 6 characters.");
+  $("sGo").disabled = true;
+  try { const u = await signUpStudent({ examId, birthday, password }); await go(u); }
+  catch (err) { show(friendlyError(err)); $("sGo").disabled = false; }
+});
+
+$("rq").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = $("rqEmail").value.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return show("Enter the email address of your account.");
+  const key = "resetReq:" + email;
+  try { if (Date.now() - Number(localStorage.getItem(key) || 0) < 600000) return show("You already sent a request a moment ago. Please wait for the IT Administrator.", true); } catch {}
+  $("rqGo").disabled = true;
+  try {
+    await requestPasswordReset(email, $("rqEmp").value);
+    try { localStorage.setItem(key, String(Date.now())); } catch {}
+    view("signin"); show("Request sent. The IT Administrator will give you a temporary password or email a reset link.", true);
+  } catch (err) { show("Could not send the request. Check your connection and try again."); }
+  finally { $("rqGo").disabled = false; }
+});
+</script></body></html>
