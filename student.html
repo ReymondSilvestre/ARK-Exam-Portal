@@ -1,0 +1,18 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Student - ARK Exam Scanner</title><link rel="stylesheet" href="css/style.css"></head>
+<body><div class="wrap">
+<div class="top"><div class="brand"><span class="mark">ARK</span><span id="who">Student</span></div>
+<span><span id="sync" class="sync"><i class="dot"></i><span>Online</span></span> <button class="btn small" id="out">Sign out</button></span></div>
+<div id="msg" class="notice" hidden role="alert"></div>
+<div class="panel"><h2 id="name">My account</h2><p class="muted" id="info"></p></div>
+<div class="tabs" id="tabs"><button class="btn on" data-t="results">My exam results</button><button class="btn" data-t="modules">Modules</button><button class="btn" data-t="rooms">My classrooms</button></div>
+<section data-s="results"><div class="panel"><div class="row"><label>Term / quarter<select id="rTerm"></select></label></div>
+<div class="tablewrap"><table id="rTbl"></table></div></div></section>
+<section data-s="modules" hidden><div class="panel"><div class="row"><label>Term / quarter<select id="mTerm"></select></label></div>
+<div class="tablewrap"><table id="mTbl"></table></div></div></section>
+<section data-s="rooms" hidden><div class="panel"><h2>Join another teacher's classroom</h2>
+<p class="muted fine">Ask the teacher for the classroom code. After joining you see that teacher's exam results and modules. Your own section and other classrooms stay separate.</p>
+<div class="row"><label>Classroom code<input id="jCode" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="K7M2QX"></label><button class="btn primary" id="jGo">Join classroom</button></div></div>
+<div class="panel"><h2>My classrooms</h2><div class="tablewrap"><table id="cTbl"></table></div></div></section>
+</div>
+<script type="module" src="js/student.js"></script></body></html>

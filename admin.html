@@ -1,0 +1,76 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>IT Admin - ARK Exam Scanner</title><link rel="stylesheet" href="css/style.css"></head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand"><span class="mark">ARK</span><span>IT Admin</span></div>
+    <p class="muted" style="color:#bbb;margin:.2rem 0 1rem;font-size:.85rem" id="school"></p>
+    <nav>
+      <a href="#dashboard" data-v="dashboard">Dashboard</a>
+      <a href="#teachers" data-v="teachers">Accounts</a>
+      <a href="#requests" data-v="requests">Reset requests <span class="count" id="reqCount" hidden>0</span></a>
+      <a href="#activity" data-v="activity">Activity log</a>
+      <a href="teacher.html" class="tools">Teacher tools &rarr;</a>
+    </nav>
+    <div class="who"><span id="who"></span><button class="btn" id="out">Sign out</button></div>
+  </aside>
+
+  <main class="main">
+    <div class="top"><h1 id="title">Dashboard</h1>
+      <span class="sync" id="sync" role="status"><i class="dot"></i><span>Online</span></span></div>
+    <div id="msg" class="notice" hidden role="alert"></div>
+
+    <section data-view="dashboard">
+      <div class="cards">
+        <div class="stat"><b id="s-teachers">-</b><span>Faculty / teachers</span></div>
+        <div class="stat"><b id="s-active">-</b><span>Active teachers</span></div>
+        <div class="stat"><b id="s-students">-</b><span>Student accounts</span></div>
+        <div class="stat warn"><b id="s-req">-</b><span>Pending reset requests</span></div>
+        <div class="stat"><b id="s-exams">-</b><span>Examinations</span></div>
+        <div class="stat"><b id="s-scans">-</b><span>Scanned answer sheets</span></div>
+      </div>
+      <div class="panel"><h2>Recent activity</h2><div class="tablewrap"><table id="recent"></table></div></div>
+    </section>
+
+    <section data-view="teachers" hidden>
+      <div class="panel">
+        <h2>Add a faculty / teacher account</h2>
+        <p class="muted">Only you can create teacher accounts for this school. Teachers then create the accounts of their own advisory students.</p>
+        <form id="newT" class="row" novalidate>
+          <label>Last name<input name="lastName" autocomplete="off" required></label>
+          <label>First name<input name="firstName" autocomplete="off" required></label>
+          <label class="narrow">M.I.<input name="mi" maxlength="1" autocomplete="off"></label>
+          <label>Employee No.<input name="employeeId" autocomplete="off" required></label>
+          <label>Birthday<input name="birthday" type="date" required></label>
+          <button class="btn primary" id="addBtn">Create account</button>
+        </form>
+        <small>Username = Employee No. (with the school code). Temporary password = birth year + first letter of the last name (example <b>1985D</b>). The teacher must choose a new password at first sign-in.</small>
+      </div>
+      <div class="panel">
+        <div class="row"><label>Search<input id="q" placeholder="Name, Employee No. or Exam ID No."></label>
+          <label>Show<select id="roleF"><option value="">Teachers and students</option><option value="teacher">Teachers only</option><option value="student">Students only</option></select></label></div>
+        <div class="tablewrap"><table id="teachers"></table></div>
+      </div>
+    </section>
+
+    <section data-view="requests" hidden>
+      <div class="panel">
+        <h2>Password reset requests</h2>
+        <p class="muted">Teachers ask for a reset from the sign-in page with the school code and Employee No. Check the match, then reset the password to the temporary one (birth year + first letter of the last name) and give it to the teacher in person.</p>
+        <div class="tablewrap"><table id="reqTbl"></table></div>
+      </div>
+    </section>
+
+    <section data-view="activity" hidden>
+      <div class="panel"><div class="tablewrap"><table id="audit"></table></div></div>
+    </section>
+  </main>
+</div>
+
+<dialog id="dlg"><h2 id="dlgTitle"></h2><p id="dlgBody"></p>
+  <code class="pw" id="dlgPw" hidden></code>
+  <div class="row"><button class="btn" id="dlgCopy" hidden>Copy</button><button class="btn primary" id="dlgOk">Close</button></div>
+</dialog>
+<script type="module" src="js/admin.js"></script>
+</body></html>
