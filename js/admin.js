@@ -1,8 +1,8 @@
-import { requireRole, logout, db, esc, friendlyError, app, staffEmail, fbPass, defaultStudentPassword, fullName, applyBranding } from "./auth.js";
+import { requireRole, logout, db, esc, friendlyError, app, staffEmail, studentEmail, fbPass, defaultStudentPassword, fullName, applyBranding } from "./auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signOut, deleteUser } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updatePassword, signOut, deleteUser } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   collection, query, where, orderBy, limit, getDocs, getCountFromServer,
   doc, setDoc, updateDoc, deleteDoc, addDoc, serverTimestamp
@@ -32,6 +32,9 @@ function popup(title, body, secret) {
 $("dlgOk").onclick = () => { $("dlg").close(); $("dlgPw").textContent = ""; };
 $("dlgCopy").onclick = () => navigator.clipboard?.writeText($("dlgPw").textContent);
 const ask = (text) => confirm(text);
+// Set to true ONLY if you deploy the Cloud Functions (functions/index.js). While false, nothing calls them and
+// password / removal actions use the browser-only methods below, so no "service not set up" errors appear.
+const USE_CLOUD_FUNCTION = false;
 const fnMissing = (e) => ["functions/not-found", "functions/internal", "functions/unavailable"].includes(e.code);
 const lastOf = (t) => t.lastName || String(t.displayName || "").split(",")[0];
 const pwOf = (t) => defaultStudentPassword({ birthday: t.birthday, lastName: lastOf(t) });
@@ -120,28 +123,61 @@ $("newT").addEventListener("submit", async (e) => {
   finally { $("addBtn").disabled = false; deleteApp(second).catch(() => {}); }
 });
 
-/* ---------- reset a password to the temporary one (needs the Cloud Function, README step G) ---------- */
+/* ---------- passwords WITHOUT a Cloud Function ----------
+   Firebase lets only the account's owner change its password from a browser. The one thing a browser CAN do:
+   an account that still has its temporary password (birth year + first letter of last name - it has not chosen
+   its own yet) can be signed into in the background, using a second Firebase app so the IT Admin stays signed in,
+   and its password changed from there. Returns true when it worked, false when the account's current password is
+   not the temporary one (the person chose their own), which no browser can override. */
+async function browserPassword(t, newPw) {
+  const cur = pwOf(t);
+  if (!cur) throw new Error("This account has no birthday or last name on file, so its temporary password cannot be worked out.");
+  const email = t.email || (t.role === "student" ? studentEmail(t.studentId) : staffEmail(school.code, t.employeeId));
+  const second = initializeApp(firebaseConfig, "pw-" + Date.now()), a = getAuth(second);
+  try {
+    let cred;
+    try { cred = await signInWithEmailAndPassword(a, email, fbPass(cur)); }
+    catch (err) { if (["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found"].includes(err.code)) return false; throw err; }
+    if (newPw) await updatePassword(cred.user, fbPass(newPw));   // newPw = null only checks that the temporary password still works
+    await signOut(a);
+    return true;
+  } finally { deleteApp(second).catch(() => {}); }
+}
+const OWN_PASSWORD = (t) => `${t.displayName} has already chosen their own password. Without the Cloud Function, Firebase does not allow anyone else to change a password the person set themselves, so it cannot be changed from here.\n\nThey need to sign in with the password they chose. (If you deploy the Cloud Function once, this limit goes away - see README step G.)`;
+
+/* ---------- reset a password to the temporary one ---------- */
 async function resetToDefault(t) {
   const pw = pwOf(t);
   if (!pw) throw new Error("This account has no birthday or last name on file, so the temporary password cannot be made.");
-  try { await httpsCallable(getFunctions(app), "adminSetTempPassword")({ uid: t.uid, useDefault: true }); }
-  catch (err) { throw fnMissing(err) ? new Error("The password-reset service is not set up yet (README step G).") : err; }
-  popup(`Password reset for ${t.displayName}`, `Username: ${t.role === "student" ? "Exam ID No. " + t.studentId : "school code " + school.code + " + Employee No. " + t.employeeId}. Temporary password below. They must choose a new password at the next sign-in.`, pw);
+  const who = `Username: ${t.role === "student" ? "Exam ID No. " + t.studentId : "school code " + school.code + " + Employee No. " + t.employeeId}.`;
+  if (USE_CLOUD_FUNCTION) {
+    try {
+      await httpsCallable(getFunctions(app), "adminSetTempPassword")({ uid: t.uid, useDefault: true });
+      popup(`Password reset for ${t.displayName}`, `${who} Temporary password below. They must choose a new password at the next sign-in.`, pw);
+      return;
+    } catch (err) { if (!fnMissing(err)) throw err; }
+  }
+  // Browser-only: if they never changed it, the temporary password is already what it should be.
+  if (await browserPassword(t, null))
+    popup(`${t.displayName} still has the temporary password`, `${who} They have not chosen their own password yet, so it is still the temporary one below.`, pw);
+  else popup("Cannot reset from here", OWN_PASSWORD(t));
 }
 
-/* ---------- set a specific password for an account (instead of only the birth-year default) ----------
-   This replaces the account's real sign-in password outright - once set, their old password
-   (whatever they changed it to) stops working, same as "Reset password" above. Uses the same
-   Cloud Function as "Reset password", just with the password you choose instead of the default. */
+/* ---------- set a specific password for an account (instead of only the birth-year default) ---------- */
 async function setCustomPassword(t) {
   const min = t.role === "student" ? 6 : 10;
-  const pw = prompt(`Set a new password for ${t.displayName}.\n\nThis becomes their sign-in password right away; whatever they changed it to stops working. At least ${min} characters${t.role === "student" ? "" : ", with a letter and a number"}. They are not told what it is.`);
+  const pw = prompt(`Set a new password for ${t.displayName}.\n\nAt least ${min} characters${t.role === "student" ? "" : ", with a letter and a number"}. They are not told what it is; they must choose a new one at their next sign-in.`);
   if (pw === null) return;
   if (pw.length < min || (t.role !== "student" && (!/[A-Za-z]/.test(pw) || !/\d/.test(pw)))) return flash(`Use at least ${min} characters${t.role === "student" ? "" : " with a letter and a number"}.`);
-  try {
-    await httpsCallable(getFunctions(app), "adminSetTempPassword")({ uid: t.uid, password: pw });
-    flash(`Password set for ${t.displayName}. They must choose a new one at their next sign-in.`, true);
-  } catch (err) { throw fnMissing(err) ? new Error("The password service is not set up yet (README step G).") : err; }
+  let done = false;
+  if (USE_CLOUD_FUNCTION) {
+    try { await httpsCallable(getFunctions(app), "adminSetTempPassword")({ uid: t.uid, password: pw }); done = true; }
+    catch (err) { if (!fnMissing(err)) throw err; }
+  }
+  if (!done) done = await browserPassword(t, pw);
+  if (!done) return popup("Cannot set the password from here", OWN_PASSWORD(t));
+  await logAudit(t.role + ".temp_password_set", t.uid, { username: userOf(t) });
+  flash(`Password set for ${t.displayName}. They must choose a new one at their next sign-in.`, true);
 }
 
 /* ---------- remove an account (Firestore AND Firebase Authentication) ---------- */
@@ -150,6 +186,7 @@ async function removeAccount(u) {
   const extra = stu ? "" : "\n\nEverything this teacher owns is deleted too: sections, classroom codes, students (and their logins), examinations, results and modules.";
   if (!ask(`Permanently remove ${label}? Their login is deleted from Firebase and cannot be undone.${extra}`)) return;
   try {
+    if (!USE_CLOUD_FUNCTION) throw { code: "functions/not-found" };
     await httpsCallable(getFunctions(app), "adminDeleteUser")({ uid: u.uid });
     flash(`${u.displayName} was removed from Firebase.`, true);
   } catch (err) {
