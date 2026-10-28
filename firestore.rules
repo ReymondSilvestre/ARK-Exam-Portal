@@ -14,6 +14,7 @@ service cloud.firestore {
     function isAdmin()     { return liveAccount() && me().role == 'admin'; }     // the school's IT admin
     function isTeacher()   { return liveAccount() && me().role == 'teacher'; }
     function isRegistrar() { return liveAccount() && me().role == 'registrar'; }   // enrols students, assigns advisers
+    function isFinance()   { return liveAccount() && me().role == 'finance'; }     // records payments, shows student balances
     function isStaff()     { return isAdmin() || isTeacher(); }                  // the IT admin has every teacher feature
     function isStudent()   { return liveAccount() && me().role == 'student'; }
 
@@ -95,14 +96,14 @@ service cloud.firestore {
           (isSuper() && request.resource.data.role == 'admin'
               && existsAfter(/databases/$(database)/documents/schools/$(request.resource.data.schoolId)))
           // School IT admin creates a faculty / teacher account in their own school
-          || (isAdmin() && request.resource.data.role in ['teacher', 'registrar'] && sameSchool())
+          || (isAdmin() && request.resource.data.role in ['teacher', 'registrar', 'finance'] && sameSchool())
           // A teacher (or the IT admin) creates a login for one of their own students
           || (isStaff() && request.resource.data.role == 'student' && sameSchool()
               && studentRec(request.resource.data.studentId).ownerUid == request.auth.uid)
         );
 
       allow update: if
-        (isAdmin() && resource.data.role in ['teacher', 'registrar', 'student'] && inMySchool()
+        (isAdmin() && resource.data.role in ['teacher', 'registrar', 'finance', 'student'] && inMySchool()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
           && request.resource.data.status in ['active', 'suspended'])
         ||
@@ -114,8 +115,8 @@ service cloud.firestore {
           && request.resource.data.mustChangePassword == false
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mustChangePassword', 'passwordChangedAt']));
 
-      allow delete: if (isAdmin() && resource.data.role in ['teacher', 'registrar', 'student'] && inMySchool())
-        || (isSuper() && resource.data.role in ['admin', 'teacher', 'registrar', 'student'])
+      allow delete: if (isAdmin() && resource.data.role in ['teacher', 'registrar', 'finance', 'student'] && inMySchool())
+        || (isSuper() && resource.data.role in ['admin', 'teacher', 'registrar', 'finance', 'student'])
         || (isStaff() && resource.data.role == 'student' && studentRec(resource.data.studentId).ownerUid == request.auth.uid);
     }
 
@@ -131,7 +132,7 @@ service cloud.firestore {
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.schoolId == me().schoolId
         && (
-          (isAdmin() && request.resource.data.role in ['teacher', 'registrar'] && key.matches(me().schoolId.lower() + '[.].+'))
+          (isAdmin() && request.resource.data.role in ['teacher', 'registrar', 'finance'] && key.matches(me().schoolId.lower() + '[.].+'))
           || (isStaff() && request.resource.data.role == 'student' && request.resource.data.studentId.lower() == key
               && studentRec(request.resource.data.studentId).ownerUid == request.auth.uid)
         );
@@ -314,21 +315,21 @@ service cloud.firestore {
     }
     // Master list of every registered student of the school. Document id = schoolCode_StudentIDNo.
     match /registry/{id} {
-      allow read:   if (isRegistrar() || isAdmin()) && inMySchool() || isSuper();
+      allow read:   if (isRegistrar() || isAdmin() || isFinance()) && inMySchool() || isSuper();
       allow create: if isRegistrar() && sameSchool() && request.resource.data.createdBy == request.auth.uid;
       allow update: if isRegistrar() && inMySchool() && sameSchool();
       allow delete: if (isRegistrar() && inMySchool()) || isSuper();
     }
     // One record per enrolment (student + school year + term / quarter).
     match /enrollmentRecords/{id} {
-      allow read:   if (isRegistrar() || isAdmin()) && inMySchool() || isSuper();
+      allow read:   if (isRegistrar() || isAdmin() || isFinance()) && inMySchool() || isSuper();
       allow create: if isRegistrar() && sameSchool() && validAdviser(request.resource.data.adviserUid);
       allow update: if isRegistrar() && inMySchool() && sameSchool() && validAdviser(request.resource.data.adviserUid);
       allow delete: if (isRegistrar() && inMySchool()) || isSuper();
     }
     // Registrar's lists (voucher types, clusters / strands). Document id = school code.
     match /registrarSettings/{id} {
-      allow read:   if ((isRegistrar() || isAdmin()) && id == me().schoolId) || isSuper();
+      allow read:   if ((isRegistrar() || isAdmin() || isFinance()) && id == me().schoolId) || isSuper();
       allow create, update: if isRegistrar() && id == me().schoolId && request.resource.data.schoolId == me().schoolId;
       allow delete: if isSuper();
     }
@@ -337,6 +338,39 @@ service cloud.firestore {
     match /registrarLog/{id} {
       allow read:   if ((isRegistrar() || isAdmin()) && inMySchool()) || isSuper();
       allow create: if isRegistrar() && sameSchool() && request.resource.data.byUid == request.auth.uid;
+      allow update: if false;
+      allow delete: if isSuper();
+    }
+
+    /* ---------------- FINANCE: payments, balances, fee schedule ---------------- */
+    // One document per payment received. A payment is never deleted: Finance voids it (status 'void' with a reason) and it stays in the history.
+    match /payments/{id} {
+      allow read:   if ((isFinance() || isAdmin()) && inMySchool()) || isSuper()
+                    || (isStudent() && resource.data.studentId == me().studentId);
+      allow create: if isFinance() && sameSchool() && request.resource.data.createdBy == request.auth.uid
+                    && request.resource.data.amount is number && request.resource.data.amount > 0;
+      allow update: if isFinance() && inMySchool() && sameSchool()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','voidReason','voidedAt','voidedBy','voidedByName']);
+      allow delete: if isSuper();
+    }
+    // What each student owes / paid / still owes for a school year. Written by Finance, read by that student (the Student page shows it).
+    match /studentAccounts/{id} {
+      allow read:   if ((isFinance() || isAdmin()) && inMySchool()) || isSuper()
+                    || (isStudent() && resource.data.studentId == me().studentId);
+      allow create: if isFinance() && sameSchool();
+      allow update: if isFinance() && inMySchool() && sameSchool();
+      allow delete: if (isFinance() && inMySchool()) || isSuper();
+    }
+    // Finance's lists: payment transactions and the fee schedule (per school year, grade level and voucher type). Document id = school code.
+    match /financeSettings/{id} {
+      allow read:   if ((isFinance() || isAdmin()) && id == me().schoolId) || isSuper();
+      allow create, update: if isFinance() && id == me().schoolId && request.resource.data.schoolId == me().schoolId;
+      allow delete: if isSuper();
+    }
+    // History log of Finance (payments recorded / voided, settings changed). Append-only.
+    match /financeLog/{id} {
+      allow read:   if ((isFinance() || isAdmin()) && inMySchool()) || isSuper();
+      allow create: if isFinance() && sameSchool() && request.resource.data.byUid == request.auth.uid;
       allow update: if false;
       allow delete: if isSuper();
     }

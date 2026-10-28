@@ -489,3 +489,20 @@ details.bulk{border:1px dashed var(--line);border-radius:6px;padding:.5rem .8rem
 .hist-detail .old{color:var(--muted);text-decoration:line-through} .hist-detail .new{font-weight:600}
 .badge.act{color:#1a3f9c;border-color:#1a3f9c;white-space:nowrap}
 .badge.act.del{color:var(--red);border-color:var(--red)}
+
+/* ---- dashboards (registrar + finance) ---- */
+.dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,30rem),1fr));gap:1rem;align-items:start}
+.dgrid .panel{margin:0}
+.bar{display:inline-block;vertical-align:middle;width:5rem;height:.55rem;background:#e6e6e8;border-radius:99px;overflow:hidden;margin-left:.4rem}
+.bar i{display:block;height:100%;background:var(--red)}
+tr.tot td{font-weight:700;background:#fafafa}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.stat.good{border-left-color:var(--ok)}
+.stat.blue{border-left-color:#1a3f9c}
+.stat b.sm{font-size:1.35rem}
+.cards.wide3{grid-template-columns:repeat(auto-fit,minmax(14rem,1fr))}
+.badge.paid{color:var(--ok);border-color:var(--ok)} .badge.part{color:var(--warn);border-color:var(--warn)} .badge.unpaid{color:var(--red);border-color:var(--red)} .badge.void{color:#777;border-color:#999}
+tr.voided td{color:#888;text-decoration:line-through} tr.voided td.actions,tr.voided td:last-child{text-decoration:none}
+.feegrid input{width:7.5rem;text-align:right}
+.matrix td small{display:block;color:var(--muted);font-size:.72rem;white-space:normal}
+@media print{.dgrid{display:block}}

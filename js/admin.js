@@ -40,6 +40,7 @@ const USE_CLOUD_FUNCTION = false;
 const fnMissing = (e) => ["functions/not-found", "functions/internal", "functions/unavailable"].includes(e.code);
 const lastOf = (t) => t.lastName || String(t.displayName || "").split(",")[0];
 const pwOf = (t) => defaultStudentPassword({ birthday: t.birthday, lastName: lastOf(t) });
+const ROLE_NAME = { teacher: "Teacher", registrar: "Registrar", finance: "Finance" };
 const userOf = (t) => (t.role === "student" ? t.studentId : t.employeeId);
 
 /* ---------- connection indicator ---------- */
@@ -66,7 +67,7 @@ const logAudit = (action, targetUid, details = {}) =>
 /* ---------- accounts of this school ---------- */
 let users = [], teachers = [];
 async function loadTeachers() {
-  const snap = await getDocs(query(collection(db, "users"), where("schoolId", "==", SID), where("role", "in", ["teacher", "registrar", "student"])));
+  const snap = await getDocs(query(collection(db, "users"), where("schoolId", "==", SID), where("role", "in", ["teacher", "registrar", "finance", "student"])));
   users = snap.docs.map((d) => d.data()).sort((a, b) => String(a.displayName).localeCompare(String(b.displayName)));
   teachers = users.filter((u) => u.role === "teacher");
   renderTeachers();
@@ -79,7 +80,7 @@ function renderTeachers() {
   const rows = users.filter((t) => (!rf || t.role === rf) && (!q || [t.displayName, t.employeeId, t.studentId].join(" ").toLowerCase().includes(q)));
   $("teachers").innerHTML = `<tr><th>Name</th><th>Role</th><th>Username</th><th>Status</th><th>Created</th><th></th></tr>` +
     (rows.length ? rows.map((t) => { const stu = t.role === "student"; return `<tr>
-      <td>${esc(t.displayName)}</td><td>${stu ? "student" : t.role === "registrar" ? "registrar" : "faculty / teacher"}</td>
+      <td>${esc(t.displayName)}</td><td>${stu ? "student" : t.role === "registrar" ? "registrar" : t.role === "finance" ? "finance" : "faculty / teacher"}</td>
       <td>${stu ? "Exam ID No. " + esc(t.studentId) : esc(school.code) + " / " + esc(t.employeeId)}${t.hasRealEmail ? `<small>${esc(t.email)}</small>` : ""}</td>
       <td><span class="badge ${esc(t.status)}">${esc(t.status)}</span></td><td>${fmt(t.createdAt)}</td>
       <td class="actions">
@@ -96,7 +97,7 @@ $("q").addEventListener("input", renderTeachers); $("roleF").addEventListener("c
 $("newT").addEventListener("submit", async (e) => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
-  const role = f.role === "registrar" ? "registrar" : "teacher", lastName = f.lastName.trim(), firstName = f.firstName.trim(), mi = (f.mi || "").trim().slice(0, 1).toUpperCase(), employeeId = f.employeeId.trim(), birthday = f.birthday;
+  const role = ["registrar", "finance"].includes(f.role) ? f.role : "teacher", lastName = f.lastName.trim(), firstName = f.firstName.trim(), mi = (f.mi || "").trim().slice(0, 1).toUpperCase(), employeeId = f.employeeId.trim(), birthday = f.birthday;
   if (!lastName || !firstName || !employeeId || !birthday) return flash("Enter the last name, first name, Employee No. and birthday.");
   // Typed email wins; otherwise ONE shared inbox: IT Admin email + Employee No. (adminemail+1001@gmail.com)
   const realEmail = cleanEmail(f.email) || sharedEmail(profile.email, employeeId);
@@ -125,7 +126,7 @@ $("newT").addEventListener("submit", async (e) => {
     await logAudit(role + ".create", uid, { username: employeeId, ...(realEmail ? { email: realEmail } : {}) });
     await signOut(getAuth(second));
     e.target.reset();
-    popup((role === "registrar" ? "Registrar" : "Teacher") + " account created", `Sign-in: school code ${school.code}, Employee No. ${employeeId}${realEmail ? ` (or the email ${realEmail})` : ""}. Temporary password (birth year + first letter of last name). They must choose a new one at first sign-in.` + (realEmail ? ` Forgot-password links go to ${realEmail}.` : " No email was given, so password help goes through you."), pw);
+    popup(ROLE_NAME[role] + " account created", `Sign-in: school code ${school.code}, Employee No. ${employeeId}${realEmail ? ` (or the email ${realEmail})` : ""}. Temporary password (birth year + first letter of last name). They must choose a new one at first sign-in.` + (realEmail ? ` Forgot-password links go to ${realEmail}.` : " No email was given, so password help goes through you."), pw);
     await refresh();
   } catch (err) { flash(friendlyError(err)); }
   finally { $("addBtn").disabled = false; deleteApp(second).catch(() => {}); }
@@ -190,8 +191,8 @@ async function setCustomPassword(t) {
 
 /* ---------- remove an account (Firestore AND Firebase Authentication) ---------- */
 async function removeAccount(u) {
-  const stu = u.role === "student", label = stu ? `student ${u.displayName} (Exam ID No. ${u.studentId})` : `${u.role === "registrar" ? "registrar" : "teacher"} ${u.displayName} (Employee No. ${u.employeeId})`;
-  const extra = stu || u.role === "registrar" ? "" : "\n\nEverything this teacher owns is deleted too: sections, classroom codes, students (and their logins), examinations, results and modules.";
+  const stu = u.role === "student", label = stu ? `student ${u.displayName} (Exam ID No. ${u.studentId})` : `${u.role === "registrar" ? "registrar" : u.role === "finance" ? "finance" : "teacher"} ${u.displayName} (Employee No. ${u.employeeId})`;
+  const extra = stu || u.role === "registrar" || u.role === "finance" ? "" : "\n\nEverything this teacher owns is deleted too: sections, classroom codes, students (and their logins), examinations, results and modules.";
   if (!ask(`Permanently remove ${label}? Their login is deleted from Firebase and cannot be undone.${extra}`)) return;
   try {
     if (!USE_CLOUD_FUNCTION) throw { code: "functions/not-found" };

@@ -1,18 +1,34 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8">
 <link rel="icon" href="favicon.ico" sizes="any"><link rel="icon" href="favicon.png" type="image/png" sizes="512x512"><link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32"><link rel="apple-touch-icon" href="apple-touch-icon.png"><meta name="theme-color" content="#b3121f"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Registrar - SylverVibe Code - Exam Portal</title><link rel="stylesheet" href="css/style.css">
-<!-- SheetJS: used only to read Excel lists and to export the master list -->
+<!-- SheetJS: used only to download (export) lists as Excel files -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head><body><div class="wrap wide">
 <div class="top noprint"><div class="brand"><span class="mark logo"><img src="img/logo.png" alt="SylverVibe Code"></span><span id="who">Registrar</span></div>
 <span><span id="sync" class="sync"><i class="dot"></i><span>Online</span></span> <button class="btn small" id="out">Sign out</button></span></div>
 <div id="msg" class="notice noprint" hidden role="alert"></div>
 <div class="tabs noprint" id="tabs">
-<button class="btn" data-t="reg">Student registration</button><button class="btn" data-t="enroll">Enrollment</button>
-<button class="btn" data-t="sections">Sections &amp; advisers</button><button class="btn" data-t="master">Master list</button><button class="btn" data-t="history">History</button><button class="btn" data-t="settings">Settings</button></div>
+<button class="btn" data-t="dash">Dashboard</button><button class="btn" data-t="reg">Student registration</button><button class="btn" data-t="enroll">Enrollment</button>
+<button class="btn" data-t="sections">Sections &amp; advisers</button><button class="btn" data-t="master">Registration masterlist</button><button class="btn" data-t="enrolled">Enrolled masterlist</button><button class="btn" data-t="history">History</button><button class="btn" data-t="settings">Settings</button></div>
+
+<!-- DASHBOARD -->
+<section data-s="dash"><div class="panel">
+<h2>Registrar dashboard</h2>
+<p class="muted fine">Based on the registration masterlist. A student is <b>enrolled</b> when he or she has an enrollment record for the chosen school year (and term / quarter, if one is chosen). Every other registered student is <b>not enrolled</b>.</p>
+<div class="row"><label>School year<select id="dsYear"></select></label><label>Term / quarter<select id="dsTermSel"></select></label></div>
+<p class="muted fine" id="dsCtx"></p></div>
+<div class="cards" id="dsCards"></div>
+<div class="dgrid">
+<div class="panel"><h2>Enrolled and not enrolled per grade level</h2><div class="tablewrap"><table id="dsGrade"></table></div></div>
+<div class="panel"><h2>Enrolled per cluster / strand</h2><div class="tablewrap"><table id="dsStrand"></table></div></div>
+<div class="panel"><h2>Enrolled and not enrolled per term / quarter</h2><p class="muted fine">For the chosen school year.</p><div class="tablewrap"><table id="dsTermTbl"></table></div></div>
+<div class="panel"><h2>Male and female - registration masterlist</h2><div class="tablewrap"><table id="dsGenReg"></table></div></div>
+<div class="panel"><h2>Male and female - enrolled masterlist</h2><div class="tablewrap"><table id="dsGenEn"></table></div></div>
+<div class="panel"><h2>Male and female per section</h2><div class="tablewrap"><table id="dsGenSec"></table></div></div>
+</div></section>
 
 <!-- STUDENT REGISTRATION -->
-<section data-s="reg"><div class="panel">
+<section data-s="reg" hidden><div class="panel">
 <h2 id="rgHead">Student registration</h2>
 <div class="row">
 <label>Grade level <span class="req">*</span><select id="rgGrade"></select></label>
@@ -45,7 +61,7 @@
 <!-- ENROLLMENT -->
 <section data-s="enroll" hidden>
 <div class="subnav noprint" data-sub="enroll" aria-label="Enrollment sections">
-<button class="btn" type="button" data-p="enForm">Enroll a student</button><button class="btn" type="button" data-p="enUpload">Upload a section list</button><button class="btn" type="button" data-p="enList">Enrolled in the section <span class="cnt" id="enCnt"></span></button></div>
+<button class="btn" type="button" data-p="enForm">Enroll a student</button><button class="btn" type="button" data-p="enList">Enrolled in the section <span class="cnt" id="enCnt"></span></button></div>
 <div class="panel" data-p="enForm"><h2>Enroll a student</h2>
 <div class="row"><label>Find a registered student<input id="enQ" placeholder="Student ID No., LRN or name" autocomplete="off"></label>
 <label>Student<select id="enStu"></select></label></div>
@@ -59,10 +75,6 @@
 <div class="row" id="enExtra" style="margin-top:.6rem"></div>
 <div class="row" style="margin-top:.8rem"><button class="btn primary" id="enSave">Enroll student</button></div>
 </div>
-<div class="panel" data-p="enUpload" hidden><h2>Upload a list for this section</h2>
-<p class="ctxline">Enrolling into: <b class="enCtx"></b> <button class="btn small" type="button" data-goto="enroll:enForm">Change</button></p>
-<p class="muted fine">Uses the grade level, term / quarter, school year, cluster / strand and section chosen under <b>Enroll a student</b>. Every student on the list is registered (if new) and enrolled in that section. Accepted: Excel or CSV with the same columns as the master list (Student ID No. and LRN identify the student; a student already in the master list only needs the ID).</p>
-<div class="row"><label>Excel or CSV file<input type="file" id="enFile" accept=".csv,.txt,.xlsx,.xls"></label></div></div>
 <div class="panel" data-p="enList" hidden><div class="listbar"><h2 style="margin:0">Enrolled in the chosen section</h2></div>
 <p class="ctxline">Section: <b class="enCtx"></b> <button class="btn small" type="button" data-goto="enroll:enForm">Change</button></p>
 <div class="tablewrap"><table id="enTbl"></table></div></div>
@@ -83,22 +95,33 @@
 <div class="tablewrap" style="margin-top:.8rem"><table id="scView"></table></div></div>
 </section>
 
-<!-- MASTER LIST -->
+<!-- REGISTRATION MASTERLIST -->
 <section data-s="master" hidden>
-<div class="subnav noprint" data-sub="master" aria-label="Master list">
-<button class="btn" type="button" data-p="mlList">All students <span class="cnt" id="mlCnt"></span></button><button class="btn" type="button" data-p="mlSec">View / download per section</button><button class="btn" type="button" data-p="mlUp">Upload a list</button></div>
-
-<div class="panel" data-p="mlList"><h2>Master list</h2>
+<div class="panel" data-p="mlList"><h2>Registration masterlist <span class="cnt" id="mlCnt"></span></h2><p class="muted fine">Every student who is registered, enrolled or not. Enrolled students are also on the <b>Enrolled masterlist</b>.</p>
 <div class="row"><label>Search<input id="mlQ" placeholder="Student ID No., LRN or name" autocomplete="off"></label>
 <label>Grade level<select id="mlGrade"></select></label><label>Voucher<select id="mlVoucher"></select></label>
 <label>Sort names<select id="mlSort"><option value="az">A &rarr; Z</option><option value="za">Z &rarr; A</option><option value="no">Student ID No.</option></select></label></div>
-<div class="btnbar"><button class="btn primary" id="mlXlsx" type="button">Download all (Excel)</button><button class="btn" type="button" data-goto="master:mlSec">View per section</button><button class="btn" type="button" data-goto="master:mlSec">Download per section</button></div>
+<div class="btnbar"><button class="btn primary" id="mlXlsx" type="button">Download all (Excel)</button><button class="btn" type="button" data-goto="enrolled:elList">Open the enrolled masterlist</button><button class="btn" type="button" data-goto="enrolled:mlSec">View / download per section</button></div>
 <div class="azbar" id="mlLetters" role="group" aria-label="Filter by first letter of the last name"></div>
 <p class="muted fine" id="mlCount"></p>
 <div class="scrollbox" id="mlScroll"><table id="mlTbl"></table></div></div>
+</section>
 
+<!-- ENROLLED MASTERLIST -->
+<section data-s="enrolled" hidden>
+<div class="subnav noprint" data-sub="enrolled" aria-label="Enrolled masterlist">
+<button class="btn" type="button" data-p="elList">Enrolled students <span class="cnt" id="elCnt"></span></button><button class="btn" type="button" data-p="mlSec">View / download per section</button></div>
+<div class="panel" data-p="elList"><h2>Enrolled masterlist</h2>
+<p class="muted fine">Only students who are enrolled in a section, taken from the enrollment records. A student enrolled in several terms / quarters appears once, with the terms listed.</p>
+<div class="row"><label>Search<input id="elQ" placeholder="Student ID No., LRN or name" autocomplete="off"></label>
+<label>School year<select id="elYear"></select></label><label>Term / quarter<select id="elTerm"></select></label><label>Grade level<select id="elGrade"></select></label></div>
+<div class="row" style="margin-top:.6rem"><label>Cluster / strand<select id="elStrand"></select></label><label>Section<select id="elSection"></select></label><label>Voucher<select id="elVoucher"></select></label>
+<label>Sort names<select id="elSort"><option value="az">A &rarr; Z</option><option value="za">Z &rarr; A</option><option value="no">Student ID No.</option></select></label></div>
+<div class="btnbar"><button class="btn primary" id="elXlsx" type="button">Download enrolled masterlist (Excel)</button></div>
+<p class="muted fine" id="elCount"></p>
+<div class="scrollbox"><table id="elTbl"></table></div></div>
 <div class="panel" data-p="mlSec" hidden>
-<div id="msListBox"><h2>Master list per section</h2>
+<div id="msListBox"><h2>Enrolled masterlist per section</h2>
 <p class="muted fine">Pick a section to <b>view</b> its students with their master list details, or <b>download</b> that section as an Excel file. Students are placed in sections through the Enrollment tab.</p>
 <div class="row"><label>Grade level<select id="msGrade"></select></label><label>School year<select id="msYear"></select></label><label>Term / quarter<select id="msTerm"></select></label></div>
 <div class="btnbar"><button class="btn primary" id="msDlAll" type="button">Download all sections (one Excel file, a sheet per section)</button></div>
@@ -108,10 +131,6 @@
 <p class="muted fine" id="msSub"></p>
 <div class="btnbar"><button class="btn" id="msBack" type="button">&larr; Back to sections</button><button class="btn primary" id="msDl" type="button">Download this section (Excel)</button></div>
 <div class="scrollbox"><table id="msView"></table></div></div></div>
-
-<div class="panel" data-p="mlUp" hidden><h2>Upload the overall master list</h2>
-<p class="muted fine">Excel or CSV. Column titles are recognised by name: <b>Student ID No., LRN, Voucher Type, Last Name, First Name, Middle Name, Suffix, Birthdate, Gender, Contact No., Address, Father's Name, Mother's Name, Guardian Name, Guardian Contact No., Guardian Address, Grade Level</b>. Existing students (same Student ID No.) are updated; blank cells never erase saved data. A single &quot;Last, First Middle&quot; <b>Name</b> column also works.</p>
-<div class="row"><label>Excel or CSV file<input type="file" id="mlFile" accept=".csv,.txt,.xlsx,.xls"></label><button class="btn" id="mlTpl" type="button">Download blank template</button></div></div>
 </section>
 
 <!-- HISTORY LOG -->
@@ -136,7 +155,7 @@
 <div class="panel" data-p="stStrand" hidden><h2>Clusters / strands</h2><div class="chiplist" id="stList"></div>
 <div class="row"><label>Add a cluster / strand<input id="stNew" maxlength="40" placeholder="e.g. TVL-ICT" autocomplete="off"></label><button class="btn primary" id="stAdd">Add</button></div></div>
 <div class="panel" data-p="stFields" hidden><h2>Additional information</h2>
-<p class="muted fine">Add your own fields. <b>Student registration</b> fields appear on the registration form. <b>Enrollment</b> fields appear on the Enrollment form. <b>Master list</b> fields are filled in while editing a student from the Master list. All of them show as columns in the lists, can be downloaded to Excel, and are recognised by their title when you upload a list.</p>
+<p class="muted fine">Add your own fields. <b>Student registration</b> fields appear on the registration form. <b>Enrollment</b> fields appear on the Enrollment form. <b>Master list</b> fields are filled in while editing a student from the Master list. All of them show as columns in the lists, can be downloaded to Excel, and can be downloaded to Excel.</p>
 <div id="fieldsBox"></div></div>
 </section>
 </div>

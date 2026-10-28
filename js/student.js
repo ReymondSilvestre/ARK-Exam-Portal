@@ -17,6 +17,7 @@ const grouped = (list, cols, row) => { let last, out = ""; for (const x of list)
 const byTerm = (a, b) => termRank(a.term) - termRank(b.term);
 const mine = (c) => getDocs(query(collection(db, c), where("studentId", "==", profile.studentId)));
 
+let fees = { accounts: [], pays: [], err: null };
 let S = null, results = [], modules = [], rooms = [], links = [], papers = [], attempts = new Map(), subs = new Map();
 async function loadAll() {
   const me = await getDoc(doc(db, "students", profile.studentId));
@@ -43,6 +44,28 @@ async function loadAll() {
   papers.sort((a, b) => byTerm(a, b) || String(a.title).localeCompare(String(b.title)));
   attempts = new Map((await mine("examAttempts")).docs.map((d) => [d.data().examId, d.data()]));
   subs = new Map((await mine("examSubmissions")).docs.map((d) => [d.data().examId, d.data()]));
+  // balance and payments posted by the Finance office (a failure here must not break the rest of the page)
+  try {
+    fees = { err: null,
+      accounts: (await mine("studentAccounts")).docs.map((d) => d.data()).sort((a, b) => String(b.schoolYear).localeCompare(String(a.schoolYear))),
+      pays: (await mine("payments")).docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => String(b.date).localeCompare(String(a.date)) || (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)) };
+  } catch (e) { console.warn(e); fees = { accounts: [], pays: [], err: e }; }
+}
+const peso = (n) => "\u20b1" + (Number(n) || 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function renderFees() {
+  const owed = fees.accounts.reduce((n, a) => n + Math.max(0, a.balance || 0), 0);
+  $("feTab").textContent = "Balance & payments" + (owed > 0 ? ` (${peso(owed)} due)` : "");
+  if (fees.err) { $("feBox").innerHTML = '<p class="muted">Your balance is not available yet. Please try again later or ask the Finance office.</p>'; return; }
+  if (!fees.accounts.length) { $("feBox").innerHTML = '<p class="muted">No balance has been posted for you yet.</p>'; return; }
+  $("feBox").innerHTML = fees.accounts.map((a) => {
+    const ps = fees.pays.filter((p) => p.schoolYear === a.schoolYear), paidOff = a.totalDue > 0 && a.balance <= 0;
+    return `<div class="formgrp"><h3>School year ${esc(a.schoolYear)} - ${esc(a.gradeLevel || "")}${a.voucherType ? " (" + esc(a.voucherType) + ")" : ""}</h3>
+      <div class="cards"><div class="stat"><b>${peso(a.totalDue)}</b><span>Total to pay</span></div><div class="stat good"><b>${peso(a.totalPaid)}</b><span>Total paid</span></div>
+      <div class="stat ${paidOff ? "good" : "warn"}"><b>${peso(Math.max(0, a.balance))}</b><span>${paidOff ? "Balance - fully paid" : "Balance"}</span></div></div>
+      <div class="tablewrap"><table><tr><th>Payment transaction</th><th>To pay</th><th>Paid</th><th>Balance</th></tr>${(a.lines || []).map((l) => `<tr><td>${esc(l.type)}</td><td>${peso(l.due)}</td><td>${peso(l.paid)}</td><td>${peso(Math.max(0, l.due - l.paid))}</td></tr>`).join("") || "<tr><td colspan=4>No fees set yet.</td></tr>"}</table></div>
+      <h3 style="margin-top:1rem">Payment transactions</h3>
+      <div class="tablewrap"><table><tr><th>Date</th><th>Receipt No.</th><th>Transaction</th><th>Amount</th><th>Status</th></tr>${ps.map((p) => `<tr class="${p.status === "void" ? "voided" : ""}"><td>${esc(p.date || "-")}</td><td>${esc(p.receiptNo || "-")}</td><td>${esc(p.type)}</td><td>${peso(p.amount)}</td><td>${p.status === "void" ? '<span class="badge void">Voided</span>' : '<span class="badge active">Paid</span>'}</td></tr>`).join("") || "<tr><td colspan=5>No payments yet.</td></tr>"}</table></div></div>`;
+  }).join("");
 }
 
 function renderExams() {
@@ -58,7 +81,7 @@ function renderExams() {
     }) || "<tr><td colspan=7>No exams are open for you right now.</td></tr>");
 }
 function render() {
-  renderExams();
+  renderExams(); renderFees();
   const rt = $("rTerm").value, rs = results.filter((r) => !rt || (r.term || "") === rt);
   $("rTbl").innerHTML = "<tr><th>Exam</th><th>Teacher</th><th>Subject</th><th>Score</th><th>%</th><th>Result</th><th>Items to review</th></tr>" +
     (grouped(rs, 7, (r) => `<tr><td>${esc(r.examTitle || "Examination")}</td><td>${esc(r.teacherName || "-")}</td><td>${esc(r.subject || "-")}</td><td>${r.points}/${r.maxPoints}</td><td>${r.pct}</td>

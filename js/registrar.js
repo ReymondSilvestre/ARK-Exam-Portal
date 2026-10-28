@@ -72,7 +72,7 @@ async function logEvent(action, target, label, changes, note, items) {
 
 /* ---------- navigation ---------- */
 /** Every page with several parts has a button bar (.subnav); each button shows one panel and hides the others. */
-const SUB = { enroll: "enForm", sections: "scListP", master: "mlList", settings: "stVoucher" };
+const SUB = { enroll: "enForm", sections: "scListP", enrolled: "elList", settings: "stVoucher" };
 function showSub(pg, p) {
   const sec = document.querySelector(`[data-s="${pg}"]`), nav = sec && sec.querySelector(".subnav"); if (!nav) return;
   SUB[pg] = p;
@@ -90,7 +90,7 @@ document.addEventListener("click", (e) => {
   const nb = e.target.closest(".subnav button[data-p]"); if (nb) return showSub(nb.closest("[data-s]").dataset.s, nb.dataset.p);
   const g = e.target.closest("[data-goto]"); if (g) { const [pg, p] = g.dataset.goto.split(":"); show(pg, p); scrollTo({ top: 0, behavior: "smooth" }); }
 });
-show("reg");
+show("dash");
 
 /* ---------- rendering ---------- */
 function render() {
@@ -99,10 +99,13 @@ function render() {
   keep("enGrade", options(GRADES)); keep("enTerm", options(TERMS)); keep("enStrand", options(S.strands, noneS));
   keep("scGrade", options(GRADES)); keep("scStrand", options(S.strands, noneS)); keep("scFilter", options(GRADES, "All grade levels"));
   keep("mlGrade", options(GRADES, "All grade levels")); keep("mlVoucher", options(S.vouchers, "All voucher types"));
+  keep("dsYear", options(yearChoices())); keep("dsTermSel", options(TERMS, "All terms / quarters"));
+  keep("elYear", options(yearChoices(), "All school years")); keep("elTerm", options(TERMS, "All terms / quarters")); keep("elGrade", options(GRADES, "All grade levels")); keep("elStrand", options(S.strands, "All clusters / strands"));
+  keep("elSection", `<option value="">All sections</option>` + [...S.sections].sort(byGradeName).map((s) => `<option value="${esc(s.id)}">${esc(s.name)}</option>`).join("")); keep("elVoucher", options(S.vouchers, "All voucher types"));
   keep("msGrade", options(GRADES, "All grade levels")); keep("msYear", options(yearsList(), "All school years")); keep("msTerm", options(TERMS, "All terms"));
   keep("scAdv", S.teachers.map((t) => `<option value="${esc(t.uid)}">${esc(t.displayName)} (${esc(t.employeeId || "")})</option>`).join("") || `<option value="">No teacher accounts yet - ask the IT Admin</option>`);
   if (!$("enYear").value) $("enYear").value = schoolYearNow();
-  renderVoucherStrand(); renderFieldSettings(); renderExtras(); renderMaster(); renderMasterSections(); renderEnrollPicker(); renderSections(); renderSectionView(); renderEnrolled();
+  renderVoucherStrand(); renderFieldSettings(); renderExtras(); renderDash(); renderMaster(); renderEnList(); renderMasterSections(); renderEnrollPicker(); renderSections(); renderSectionView(); renderEnrolled();
 }
 
 /* ======================= ADDITIONAL INFORMATION (custom fields) ======================= */
@@ -262,11 +265,6 @@ function saveXlsx(sheets, file) {
   XLSX.writeFile(wb, file);
 }
 $("mlXlsx").onclick = () => saveXlsx([{ name: "Master list", rows: S.registry.map(masterRow), header: Object.keys(masterRow({})) }], `master-list-${SID}.xlsx`);
-$("mlTpl").onclick = () => {
-  const head = ["Student ID No.", "LRN", "Voucher Type", "Last Name", "First Name", "Middle Name", "Suffix", "Birthdate", "Gender", "Contact No.", "Address", "Father's Name", "Mother's Name", "Guardian Name", "Guardian Contact No.", "Guardian Address", "Grade Level", ...colFields().map((f) => f.label)];
-  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob(["\ufeff" + head.join(",") + "\n"], { type: "text/csv" })), download: "master-list-template.csv" });
-  a.click(); URL.revokeObjectURL(a.href);
-};
 
 /* ======================= MASTER LIST PER SECTION ======================= */
 const NONE = "__none";
@@ -324,6 +322,102 @@ $("msBack").onclick = () => { msSel = ""; renderMasterSections(); };
 $("msDl").onclick = () => downloadSection(msSel);
 $("msDlAll").onclick = downloadAllSections;
 $("msView").onclick = (e) => { const b = e.target.closest("[data-ed]"); const r = b && S.registry.find((x) => x.id === b.dataset.ed); if (r) fillForm(r); };
+
+/* ======================= DASHBOARD (based on the registration masterlist) ======================= */
+const NOGRADE = "No grade level", NOSTRAND = "- none / not applicable -";
+let dsInit = false, elInit = false;
+const yearChoices = () => [...new Set([schoolYearNow(), ...yearsList()])].sort().reverse();
+const pc = (a, b) => (b ? Math.round((a / b) * 1000) / 10 + "%" : "-");
+const bar = (a, b) => `<span class="bar"><i style="width:${b ? Math.min(100, Math.round((a / b) * 100)) : 0}%"></i></span>`;
+const isM = (x) => x.r.gender === "Male", isF = (x) => x.r.gender === "Female";
+const hdr = (cols) => "<tr>" + cols.map((c) => `<th>${c}</th>`).join("") + "</tr>";
+const rowHtml = (cells, cls) => `<tr${cls ? ` class="${cls}"` : ""}>${cells.map((c) => `<td>${c}</td>`).join("")}</tr>`;
+const emptyRow = (n, t) => `<tr><td colspan="${n}">${t}</td></tr>`;
+/** Everyone on the registration masterlist, with the newest enrollment inside the chosen school year / term (if any). */
+function dashScope() {
+  const y = $("dsYear").value, t = $("dsTermSel").value, latest = new Map(), regMap = new Map(S.registry.map((r) => [r.id, r]));
+  const ens = S.enrollments.filter((e) => (!y || e.schoolYear === y) && (!t || e.term === t) && regMap.has(e.registryId));
+  [...ens].sort((a, b) => termRank(b.term) - termRank(a.term) || tsec(b) - tsec(a)).forEach((e) => { if (!latest.has(e.registryId)) latest.set(e.registryId, e); });
+  const rows = S.registry.map((r) => { const e = latest.get(r.id) || null; return { r, e, grade: (e && e.gradeLevel) || r.gradeLevel || NOGRADE }; });
+  return { y, t, ens, regMap, rows, enrolled: rows.filter((x) => x.e) };
+}
+function genderTable(list) {
+  const gs = [...GRADES, NOGRADE].filter((g) => list.some((x) => x.grade === g));
+  const line = (label, a, cls) => rowHtml([esc(label), a.filter(isM).length, a.filter(isF).length, a.length], cls);
+  return hdr(["Grade level", "Male", "Female", "Total"]) + (gs.length ? gs.map((g) => line(g, list.filter((x) => x.grade === g))).join("") + line("All grade levels", list, "tot") : emptyRow(4, "No students."));
+}
+function renderDash() {
+  if (!dsInit) { dsInit = true; $("dsYear").value = schoolYearNow(); }
+  const { y, t, ens, regMap, rows, enrolled } = dashScope(), notEn = rows.length - enrolled.length;
+  $("dsCtx").textContent = `Showing: school year ${y || "all"}, ${t || "all terms / quarters"}.`;
+  $("dsCards").innerHTML = [["Registered students", rows.length], ["Total enrolled", enrolled.length], ["Total not enrolled", notEn, "warn"], ["Enrollment rate", pc(enrolled.length, rows.length)],
+    ["Enrolled - male", enrolled.filter(isM).length], ["Enrolled - female", enrolled.filter(isF).length]].map(([l, v, c]) => `<div class="stat ${c || ""}"><b>${v}</b><span>${l}</span></div>`).join("");
+  // per grade level
+  const gs = [...GRADES, NOGRADE].filter((g) => rows.some((x) => x.grade === g));
+  const gl = (g, a, cls) => { const n = a.filter((x) => x.e).length; return rowHtml([esc(g), a.length, n, a.length - n, `${pc(n, a.length)} ${bar(n, a.length)}`], cls); };
+  $("dsGrade").innerHTML = hdr(["Grade level", "Registered", "Enrolled", "Not enrolled", "% enrolled"]) + (gs.length ? gs.map((g) => gl(g, rows.filter((x) => x.grade === g))).join("") + gl("All grade levels", rows, "tot") : emptyRow(5, "No registered students yet."));
+  // enrolled per cluster / strand
+  const sm = new Map(); enrolled.forEach((x) => { const k = x.e.strand || NOSTRAND; if (!sm.has(k)) sm.set(k, []); sm.get(k).push(x); });
+  const order = [...S.strands, ...[...sm.keys()].filter((k) => !S.strands.includes(k) && k !== NOSTRAND), NOSTRAND].filter((k) => sm.has(k));
+  const sl = (k, a, cls) => rowHtml([esc(k), a.length, a.filter(isM).length, a.filter(isF).length], cls);
+  $("dsStrand").innerHTML = hdr(["Cluster / strand", "Enrolled", "Male", "Female"]) + (order.length ? order.map((k) => sl(k, sm.get(k))).join("") + sl("All clusters / strands", enrolled, "tot") : emptyRow(4, "Nobody is enrolled for this selection."));
+  // per term / quarter (always for the chosen school year)
+  $("dsTermTbl").innerHTML = hdr(["Term / quarter", "Enrolled", "Not enrolled", "% enrolled"]) + TERMS.map((tm) => {
+    const n = new Set(S.enrollments.filter((e) => (!y || e.schoolYear === y) && e.term === tm && regMap.has(e.registryId)).map((e) => e.registryId)).size;
+    return rowHtml([esc(tm), n, S.registry.length - n, `${pc(n, S.registry.length)} ${bar(n, S.registry.length)}`]);
+  }).join("");
+  // male / female
+  $("dsGenReg").innerHTML = genderTable(rows); $("dsGenEn").innerHTML = genderTable(enrolled);
+  const secMap = new Map(); ens.forEach((e) => { if (!secMap.has(e.sectionId)) secMap.set(e.sectionId, new Map()); secMap.get(e.sectionId).set(e.registryId, { r: regMap.get(e.registryId) }); });
+  const secs = S.sections.filter((s) => secMap.has(s.id)).sort(byGradeName);
+  const all = secs.flatMap((s) => [...secMap.get(s.id).values()]);
+  $("dsGenSec").innerHTML = hdr(["Section", "Grade", "Cluster / strand", "Adviser", "Male", "Female", "Total"]) + (secs.length ? secs.map((s) => { const a = [...secMap.get(s.id).values()];
+    return rowHtml([esc(s.sectionName || s.name), esc(s.gradeLevel), esc(s.strand || "-"), esc(s.adviserName || "-"), a.filter(isM).length, a.filter(isF).length, a.length]); }).join("") +
+    rowHtml(["All sections", "", "", "", all.filter(isM).length, all.filter(isF).length, all.length], "tot") : emptyRow(7, "No enrolled students in any section for this selection."));
+}
+["dsYear", "dsTermSel"].forEach((i) => ($(i).onchange = renderDash));
+
+/* ======================= ENROLLED MASTERLIST (separate from the registration masterlist) ======================= */
+function enrolledRecords() {
+  const q = $("elQ").value.trim().toLowerCase(), y = $("elYear").value, t = $("elTerm").value, g = $("elGrade").value, st = $("elStrand").value, sc = $("elSection").value, v = $("elVoucher").value, sort = $("elSort").value;
+  const regMap = new Map(S.registry.map((r) => [r.id, r])), by = new Map();
+  S.enrollments.forEach((e) => {
+    if ((y && e.schoolYear !== y) || (t && e.term !== t) || (g && e.gradeLevel !== g) || (st && (e.strand || "") !== st) || (sc && e.sectionId !== sc)) return;
+    const r = regMap.get(e.registryId); if (!r || (v && (r.voucherType || "") !== v) || (q && ![r.studentNo, r.lrn, r.name].join(" ").toLowerCase().includes(q))) return;
+    const cur = by.get(r.id);
+    if (!cur) by.set(r.id, { r, e, terms: new Set([e.term]), years: new Set([e.schoolYear || ""]) });
+    else { cur.terms.add(e.term); cur.years.add(e.schoolYear || "");
+      if ((e.schoolYear || "") > (cur.e.schoolYear || "") || ((e.schoolYear || "") === (cur.e.schoolYear || "") && termRank(e.term) > termRank(cur.e.term))) cur.e = e; }
+  });
+  const cmp = { az: (a, b) => a.r.name.localeCompare(b.r.name), za: (a, b) => b.r.name.localeCompare(a.r.name), no: (a, b) => String(a.r.studentNo).localeCompare(String(b.r.studentNo), undefined, { numeric: true }) }[sort];
+  return [...by.values()].map((x) => ({ ...x, terms: [...x.terms].sort((a, b) => termRank(a) - termRank(b)), years: [...x.years].filter(Boolean).sort() })).sort(cmp);
+}
+function renderEnList() {
+  if (!elInit) { elInit = true; $("elYear").value = schoolYearNow(); }
+  const rows = enrolledRecords(), xf = colFields(), ef = S.fields.enroll, n = 12 + xf.length + ef.length;
+  $("elCnt").textContent = `(${new Set(S.enrollments.map((e) => e.registryId)).size})`;
+  $("elCount").textContent = `${rows.length} enrolled student${rows.length === 1 ? "" : "s"} - ${rows.filter(isM).length} male, ${rows.filter(isF).length} female` + (rows.length > 12 ? " - scroll the list to see all" : "");
+  $("elTbl").innerHTML = "<tr><th>Student ID No.</th><th>LRN</th><th>Name</th><th>Grade</th><th>Cluster / strand</th><th>Section</th><th>Term / quarter</th><th>School year</th><th>Voucher</th><th>Gender</th><th>Birthdate</th><th>Age</th>" +
+    [...xf, ...ef].map((f) => `<th>${esc(f.label)}</th>`).join("") + "<th></th></tr>" +
+    (rows.slice(0, 3000).map(({ r, e, terms, years }) => `<tr><td>${esc(r.studentNo)}</td><td>${esc(r.lrn || "-")}</td><td>${esc(r.name)}</td><td>${esc(e.gradeLevel || r.gradeLevel || "")}</td><td>${esc(e.strand || "-")}</td><td>${esc(e.sectionName || "")}</td>` +
+      `<td>${esc(terms.join(", "))}</td><td>${esc(years.join(", "))}</td><td>${esc(r.voucherType || "-")}</td><td>${esc(r.gender || "")}</td><td>${esc(bd(r.birthday))}</td><td>${ageOf(r.birthday)}</td>` +
+      xf.map((f) => `<td>${esc((r.extra || {})[f.id] ?? "")}</td>`).join("") + ef.map((f) => `<td>${esc((e.extra || {})[f.id] ?? "")}</td>`).join("") +
+      `<td class="actions"><button class="btn small" data-ed="${esc(r.id)}">Edit</button><button class="btn small" data-hi="${esc(r.id)}">History</button></td></tr>`).join("") || emptyRow(n, "No enrolled students found."));
+}
+["elQ", "elYear", "elTerm", "elGrade", "elStrand", "elSection", "elVoucher", "elSort"].forEach((i) => ($(i).oninput = renderEnList));
+$("elTbl").onclick = (e) => {
+  const b = e.target.closest("[data-ed],[data-hi]"); if (!b) return;
+  const r = S.registry.find((x) => x.id === (b.dataset.ed || b.dataset.hi)); if (!r) return;
+  if (b.dataset.ed) return fillForm(r);
+  show("history"); $("hiQ").value = `(${r.studentNo})`; renderHistory(); scrollTo({ top: 0 });
+};
+$("elXlsx").onclick = () => {
+  const ef = S.fields.enroll, list = enrolledRecords();
+  if (!list.length) return flash("There are no enrolled students to download with these filters.");
+  const rowOf = ({ r, e, terms, years }) => ({ ...masterRow(r), "Grade Level": e.gradeLevel || r.gradeLevel || "", "Cluster / strand": e.strand || "", Section: e.sectionName || "", "Term / quarter": terms.join(", "), "School year": years.join(", "),
+    ...Object.fromEntries(ef.map((f) => [f.label, (e.extra || {})[f.id] ?? ""])) });
+  saveXlsx([{ name: "Enrolled masterlist", rows: list.map(rowOf), header: Object.keys(rowOf({ r: {}, e: {}, terms: [], years: [] })) }], `enrolled-masterlist-${$("elYear").value || "all"}-${SID}.xlsx`);
+};
 
 /* ======================= HISTORY LOG ======================= */
 const ACTIONS = ["Registered student", "Edited student", "Deleted student", "Enrolled student", "Removed from section", "Added section", "Changed adviser", "Deleted section", "Imported list", "Changed settings"];
@@ -508,111 +602,5 @@ async function unenroll(id) {
   } catch { /* record already gone */ }
   await refresh(); flash(`${e.name} was removed from ${e.sectionName}.`, 1);
 }
-
-/* ======================= IMPORT (master list and per-section) ======================= */
-async function readTable(f) {
-  if (/\.xlsx?$/i.test(f.name)) {
-    if (!window.XLSX) throw new Error("The Excel reader did not load. Check your internet connection, or save the list as CSV.");
-    const wb = XLSX.read(await f.arrayBuffer(), { type: "array", cellDates: false });
-    return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: "" }).map((r) => r.map((x) => String(x).trim()));
-  }
-  const text = (await f.text()).replace(/^\ufeff/, "");
-  return text.split(/\r?\n/).map((l) => { // simple CSV with quoted fields
-    const out = []; let cur = "", q = false;
-    for (let i = 0; i < l.length; i++) { const ch = l[i]; if (ch === '"') { if (q && l[i + 1] === '"') { cur += '"'; i++; } else q = !q; } else if ((ch === "," || ch === ";" || ch === "\t") && !q) { out.push(cur.trim()); cur = ""; } else cur += ch; }
-    out.push(cur.trim()); return out;
-  });
-}
-function headerKey(h) {
-  const t = String(h).toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
-  if (/guardian|parent/.test(t)) return /contact|phone|mobile|number|\bno\b/.test(t) ? "guardianContact" : /address/.test(t) ? "guardianAddress" : "guardianName";
-  if (/father/.test(t)) return "father"; if (/mother/.test(t)) return "mother";
-  if (/\blrn\b/.test(t)) return "lrn"; if (/voucher/.test(t)) return "voucher";
-  if (/suffix/.test(t)) return "suffix"; if (/middle/.test(t)) return "middle";
-  if (/last|surname|family/.test(t)) return "last"; if (/first|given/.test(t)) return "first";
-  if (/birth|bday|dob/.test(t)) return "birthday"; if (/gender|\bsex\b/.test(t)) return "gender";
-  if (/grade|year level/.test(t)) return "grade"; if (/address/.test(t)) return "address";
-  if (/contact|phone|mobile|cell/.test(t)) return "contact";
-  if (/student/.test(t) && /id|no|num/.test(t) || t === "id" || t === "student no") return "studentNo";
-  if (/^(full )?name$/.test(t)) return "name";
-  return null;
-}
-function parseName(s) {
-  s = s.trim(); let last, rest;
-  if (s.includes(",")) { last = s.split(",")[0].trim(); rest = s.split(",").slice(1).join(" ").trim(); } else { const t = s.split(/\s+/); last = t.pop(); rest = t.join(" "); }
-  const parts = rest.split(/\s+/); const first = parts.shift() || ""; return { last, first, middle: parts.join(" ") };
-}
-function parseDate(s) {
-  s = String(s || "").trim(); if (!s) return "";
-  const pad = (n) => String(n).padStart(2, "0"); let m;
-  if ((m = /^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/.exec(s))) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
-  if ((m = /^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})$/.exec(s))) {
-    let [, a, b, y] = m; a = +a; b = +b; if (y.length === 2) y = (+y <= new Date().getFullYear() % 100 ? "20" : "19") + y;
-    const [mo, d] = a > 12 ? [b, a] : [a, b]; return `${y}-${pad(mo)}-${pad(d)}`;
-  }
-  const t = new Date(s + " 12:00"); return Number.isNaN(+t) ? "" : `${t.getFullYear()}-${pad(t.getMonth() + 1)}-${pad(t.getDate())}`;
-}
-/** Turns a file into row objects keyed by field. */
-async function readPeople(file) {
-  let rows = (await readTable(file)).filter((r) => r.some(Boolean));
-  if (!rows.length) throw new Error("The file is empty.");
-  const col = {}; rows[0].forEach((h, i) => { const k = headerKey(h); if (k && !(k in col)) col[k] = i; });
-  if (!("studentNo" in col) && !("lrn" in col)) throw new Error("The first row must have column titles including Student ID No. (or LRN). Download the blank template from the Master list tab.");
-  const xcol = {}; rows[0].forEach((h, i) => { const f = [...S.fields.reg, ...S.fields.master, ...S.fields.enroll].find((x) => x.label.toLowerCase() === String(h).trim().toLowerCase()); if (f) xcol[f.id] = i; });
-  const inEnroll = new Set(S.fields.enroll.map((f) => f.id));
-  rows = rows.slice(1);
-  return rows.map((r) => { const g = (k) => (k in col ? String(r[col[k]] ?? "").trim() : ""); const o = {};
-    ["studentNo", "lrn", "voucher", "last", "first", "middle", "suffix", "gender", "contact", "address", "father", "mother", "guardianName", "guardianContact", "guardianAddress", "grade", "name"].forEach((k) => (o[k] = g(k)));
-    o.birthday = parseDate(g("birthday")); o.lrn = o.lrn.replace(/\s+/g, "");
-    if (o.name && !o.last && !o.first) Object.assign(o, parseName(o.name));
-    o.extra = {}; o.enExtra = {};
-    for (const [id, i] of Object.entries(xcol)) { const val = String(r[i] ?? "").trim(); if (val) (inEnroll.has(id) ? o.enExtra : o.extra)[id] = val; }
-    return o; }).filter((o) => o.studentNo || o.lrn);
-}
-const matchGrade = (g) => { const n = /\d+/.exec(g || ""); return n ? GRADES.find((x) => x === "Grade " + +n[0]) || "" : /^k/i.test(g || "") ? "Kindergarten" : ""; };
-/** Creates or updates the master-list record for one imported row. Returns {reg} or {skip}. */
-async function upsertRow(o, i) {
-  const studentNo = o.studentNo || o.lrn;
-  if (!isStuNo(studentNo)) return { skip: `row ${i + 2}: invalid Student ID No.` };
-  if (o.lrn && !isLrn(o.lrn)) return { skip: `row ${i + 2} (${studentNo}): LRN is not 12 digits` };
-  const id = rid(studentNo), old = S.registry.find((r) => r.id === id) || (o.lrn && S.registry.find((r) => r.lrn === o.lrn));
-  if (o.lrn && S.registry.some((r) => r.lrn === o.lrn && r.id !== (old ? old.id : id))) return { skip: `row ${i + 2} (${studentNo}): that LRN belongs to another student` };
-  const f = { lastName: o.last, firstName: o.first, middleName: o.middle, suffix: o.suffix, lrn: o.lrn, voucherType: o.voucher.toUpperCase(), birthday: o.birthday, gender: normGender(o.gender),
-    contact: o.contact, address: o.address, father: o.father, mother: o.mother, guardianName: o.guardianName, guardianContact: o.guardianContact, guardianAddress: o.guardianAddress, gradeLevel: matchGrade(o.grade) };
-  const patch = Object.fromEntries(Object.entries(f).filter(([, v]) => v)); // blank cells never erase saved data
-  const base = old || {};
-  if (!old && (!patch.lastName || !patch.firstName)) return { skip: `row ${i + 2} (${studentNo}): new student needs a last name and first name` };
-  if (Object.keys(o.extra).length) patch.extra = o.extra;
-  const merged = { ...base, ...patch, extra: { ...(base.extra || {}), ...(patch.extra || {}) } }; merged.name = nameOf(merged); patch.name = merged.name;
-  const rid2 = old ? old.id : id;
-  await setDoc(doc(db, "registry", rid2), { ...patch, ...(old ? {} : { studentNo, schoolId: SID, createdBy: user.uid, createdAt: serverTimestamp() }), updatedAt: serverTimestamp() }, { merge: true });
-  const reg = { ...base, ...merged, id: rid2, studentNo: base.studentNo || studentNo };
-  const k = S.registry.findIndex((r) => r.id === rid2); if (k >= 0) S.registry[k] = reg; else S.registry.push(reg);
-  if (patch.voucherType && !S.vouchers.some((v) => v.toLowerCase() === patch.voucherType.toLowerCase())) { S.vouchers.push(patch.voucherType); S.vouchersDirty = true; }
-  return { reg, created: !old, diff: old ? diffRec(old, patch) : [] };
-}
-async function importFile(file, withEnrol) {
-  const c = withEnrol ? ctx() : null, people = await readPeople(file);
-  if (!people.length) throw new Error("No student rows found.");
-  const skipped = [], noBday = [], items = []; let created = 0, updated = 0, enrolled = 0;
-  for (let i = 0; i < people.length; i += 10) {
-    await Promise.all(people.slice(i, i + 10).map(async (o, j) => {
-      try {
-        const r = await upsertRow(o, i + j); if (r.skip) return skipped.push(r.skip);
-        r.created ? created++ : updated++;
-        if (r.created) items.push(`${r.reg.name} (${r.reg.studentNo}) - new`); else if (r.diff.length) items.push(`${r.reg.name} (${r.reg.studentNo}) - updated: ${r.diff.map((d) => d.f).join(", ")}`);
-        if (!r.reg.birthday) noBday.push(r.reg.studentNo);
-        if (withEnrol) { await enrollOne(r.reg, c, o.enExtra); enrolled++; }
-      } catch (e) { skipped.push(`row ${i + j + 2}: ${friendlyError(e)}`); }
-    }));
-  }
-  await logEvent("Imported list", "import", file.name, [], `${created} new, ${updated} updated, ${skipped.length} skipped` + (withEnrol ? `; enrolled ${enrolled} in ${c.section.name} (${c.term}, ${c.schoolYear})` : ""), items);
-  if (S.vouchersDirty) { S.vouchersDirty = false; await saveSettings().catch(() => {}); }
-  await refresh();
-  flash(`Imported ${people.length - skipped.length} of ${people.length} rows: ${created} new, ${updated} updated` + (withEnrol ? `, ${enrolled} enrolled in ${c.section.name}` : "") + "." +
-    (noBday.length ? ` ${noBday.length} have no birthdate yet (needed before the account can be activated).` : "") + (skipped.length ? ` Skipped ${skipped.length}: ${skipped.slice(0, 4).join("; ")}${skipped.length > 4 ? "..." : ""}` : ""), !skipped.length);
-}
-$("mlFile").onchange = (e) => run(async () => { const f = e.target.files[0]; e.target.value = ""; if (f) await importFile(f, false); });
-$("enFile").onchange = (e) => run(async () => { const f = e.target.files[0]; e.target.value = ""; if (!f) return; if (!confirm("Register and enroll every student on this list in the chosen section, term and school year?")) return; await importFile(f, true); });
 
 refresh();

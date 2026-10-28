@@ -1,5 +1,27 @@
 # SylverVibe Code - Exam Portal
 
+## Update: Registrar dashboard + enrolled masterlist, and the new FINANCE user
+**Do this first:** Firestore > Rules > paste `firestore.rules` > Publish (adds the Finance role and the `payments`, `studentAccounts`, `financeSettings` and `financeLog` collections). Then upload the whole project (new files: `finance.html`, `js/finance.js`; changed: `registrar.html`, `js/registrar.js`, `js/auth.js`, `js/admin.js`, `js/student.js`, `admin.html`, `student.html`, `login.html`, `change-password.html`, `css/style.css`, `js/superadmin.js`). If you use the Cloud Functions, deploy `functions/` again. No index changes.
+
+### Registrar
+- **Uploads removed.** The "Upload a section list" (Enrollment) and "Upload a list" (Master list) panels are gone: students are registered and enrolled one by one. Excel *downloads* stay.
+- **Dashboard** (first tab, filter by school year and term / quarter). A student is *enrolled* when he or she has an enrollment record for the chosen school year (and term, if chosen); every other registered student is *not enrolled*. Shows: enrolled / not enrolled per grade level, total enrolled, total not enrolled, enrolled per cluster / strand, enrolled and not enrolled per term / quarter, male / female for the registration masterlist, for the enrolled masterlist, and per section.
+- **Registration masterlist** (was "Master list"): every registered student, enrolled or not.
+- **Enrolled masterlist** (new tab): only enrolled students, from the enrollment records, with filters (school year, term, grade, strand, section, voucher, search), Excel download, and the existing "View / download per section".
+
+### Finance (new role)
+1. **IT Admin > Accounts > Account type: Finance.** Signs in on the *Teacher / Registrar / Finance / IT Admin* tab with school code + Employee No. (same temporary password rule) and lands on `finance.html`.
+2. **Settings > Payment transactions:** the kinds of payment (Tuition, Miscellaneous, Intramurals by default; add your own).
+3. **Settings > Fee schedule:** per school year, pick a voucher group (Default for all, PUB, ALS, ESC ..., No voucher) and type the amount per grade level for each transaction. A blank cell uses the *Default for all students* amount; 0 makes it free. The calculation is therefore separate per voucher type. Voucher types come from the Registrar's settings.
+4. **Payment computation:** grade level x voucher type table of the total each student pays, with the fees that make it up and the number of enrolled students.
+5. **Record a payment:** find an enrolled student, see total to pay / paid / balance per transaction, then enter the date, transaction, amount and receipt No. A payment is never deleted: it can be **voided** with a reason (kept in the history, not counted).
+6. **Payment transactions** (filter by date, transaction, grade; Excel), **Student balances** (filter; Excel; "Pay" button), **History**.
+7. **Dashboard:** total student collection, total collection today, total student balance, total to collect, students fully paid / with a balance, and breakdowns per transaction, voucher type and grade level.
+- **Student page > Balance & payments:** each student sees the total to pay, paid, balance and own payment transactions. Finance's page keeps these in step automatically (`studentAccounts`), so open the Finance page after changing fees or enrolling students to refresh the balances.
+- Students are the **enrolled masterlist** of the chosen school year; their grade level (from the enrollment) and voucher type (from the registration) decide the total to pay.
+
+---
+
 ## Update: Registrar history log, header order
 **Do this first:** Firestore > Rules > paste `firestore.rules` > Publish (it adds the `registrarLog` collection). Then replace `registrar.html`, `js/registrar.js`, `js/auth.js` and `css/style.css`. No Cloud Functions or index changes.
 - **Header (all pages):** the school logo and school name are on top, and the signed-in user's name is underneath them.

@@ -6,7 +6,7 @@
 <span><span id="sync" class="sync"><i class="dot"></i><span>Online</span></span> <button class="btn small" id="out">Sign out</button></span></div>
 <div id="msg" class="notice" hidden role="alert"></div>
 <div class="panel"><h2 id="name">My account</h2><p class="muted" id="info"></p></div>
-<div class="tabs" id="tabs"><button class="btn on" data-t="exams">Online exams</button><button class="btn" data-t="results">My exam results</button><button class="btn" data-t="modules">Modules</button><button class="btn" data-t="rooms">My classrooms</button></div>
+<div class="tabs" id="tabs"><button class="btn on" data-t="exams">Online exams</button><button class="btn" data-t="results">My exam results</button><button class="btn" data-t="modules">Modules</button><button class="btn" data-t="fees" id="feTab">Balance &amp; payments</button><button class="btn" data-t="rooms">My classrooms</button></div>
 <section data-s="exams"><div class="panel"><h2>Online exams</h2>
 <p class="muted fine">Exams your teachers opened for you. Answer on this page, then submit. You can submit each exam <b>once</b> and your score appears right away.</p>
 <div class="tablewrap"><table id="eTbl"></table></div></div></section>
@@ -14,6 +14,8 @@
 <div class="tablewrap"><table id="rTbl"></table></div></div></section>
 <section data-s="modules" hidden><div class="panel"><div class="row"><label>Term / quarter<select id="mTerm"></select></label></div>
 <div class="tablewrap"><table id="mTbl"></table></div></div></section>
+<section data-s="fees" hidden><div class="panel"><h2>My balance and payments</h2>
+<p class="muted fine">Posted by the school's Finance office. If something looks wrong, ask the Finance office.</p><div id="feBox"></div></div></section>
 <section data-s="rooms" hidden><div class="panel"><h2>Join another teacher's classroom</h2>
 <p class="muted fine">Ask the teacher for the classroom code. After joining you see that teacher's exam results and modules. Your own section and other classrooms stay separate.</p>
 <div class="row"><label>Classroom code<input id="jCode" autocomplete="off" autocapitalize="characters" maxlength="12" placeholder="K7M2QX"></label><button class="btn primary" id="jGo">Join classroom</button></div></div>

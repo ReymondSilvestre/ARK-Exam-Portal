@@ -21,7 +21,7 @@ document.addEventListener("submit", function (e) {
     <h1>Sign in</h1>
     <div class="role-tabs" role="tablist" aria-label="Choose how you sign in">
       <button type="button" role="tab" id="tabStudent" aria-controls="panelStudent" aria-selected="true">Student</button>
-      <button type="button" role="tab" id="tabStaff" aria-controls="panelStaff" aria-selected="false">Teacher / Registrar / IT Admin</button>
+      <button type="button" role="tab" id="tabStaff" aria-controls="panelStaff" aria-selected="false">Teacher / Registrar / Finance / IT Admin</button>
     </div>
 
     <!-- STUDENT LOGIN -->
@@ -37,14 +37,14 @@ document.addEventListener("submit", function (e) {
 
     <!-- TEACHER / IT ADMIN LOGIN -->
     <div id="panelStaff" role="tabpanel" aria-labelledby="tabStaff" hidden>
-      <p class="muted role-note"><b>Teachers and Registrars:</b> school code + Employee No. <b>IT Admins:</b> your email (leave the school code blank).</p>
+      <p class="muted role-note"><b>Teachers, Registrars and Finance:</b> school code + Employee No. <b>IT Admins:</b> your email (leave the school code blank).</p>
       <form id="ft" novalidate>
-        <label>School code <small>Teachers and Registrars only. Leave blank if you are an IT Admin.</small>
+        <label>School code <small>Teachers, Registrars and Finance only. Leave blank if you are an IT Admin.</small>
           <input id="school" autocomplete="organization" autocapitalize="characters"></label>
         <label>Employee No. or email<input id="email" autocomplete="username" autocapitalize="none" required></label>
         <label>Password<input id="pw" type="password" autocomplete="current-password" required>
           <small>First time (teachers): your birth year + the first letter of your last name (example 1985D).</small></label>
-        <button class="btn primary block" id="go">Sign in as Teacher / Registrar / IT Admin</button>
+        <button class="btn primary block" id="go">Sign in as Teacher / Registrar / Finance / IT Admin</button>
       </form>
     </div>
 
@@ -137,11 +137,11 @@ async function signIn(who, password, school, wantStudent, btn) {
     const p = await getProfile(c.user.uid);
     if (p && wantStudent && p.role !== "student") {
       await auth.signOut(); btn.disabled = false;
-      return show("This is the Student sign in. Teachers, Registrars and IT Admins: use the Teacher / Registrar / IT Admin tab.");
+      return show("This is the Student sign in. Teachers, Registrars, Finance and IT Admins: use the Teacher / Registrar / Finance / IT Admin tab.");
     }
     if (p && !wantStudent && p.role === "student") {
       await auth.signOut(); btn.disabled = false;
-      return show("This is the Teacher / Registrar / IT Admin sign in. Students: use the Student tab.");
+      return show("This is the Teacher / Registrar / Finance / IT Admin sign in. Students: use the Student tab.");
     }
     if (!wantStudent) { try { localStorage.setItem("ark.schoolCode", school.trim().toUpperCase()); } catch {} }
     location.href = await destinationFor(c.user);
