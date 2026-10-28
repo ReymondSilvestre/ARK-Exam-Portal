@@ -1,7 +1,7 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8">
-<link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="icon" href="favicon.ico" sizes="any"><link rel="apple-touch-icon" href="apple-touch-icon.png"><meta name="theme-color" content="#b3121f">
+<link rel="icon" href="favicon.ico" sizes="any"><link rel="icon" href="favicon.png" type="image/png" sizes="512x512"><link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32"><link rel="apple-touch-icon" href="apple-touch-icon.png"><meta name="theme-color" content="#b3121f">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sign in - ARK Exam Scanner</title><link rel="stylesheet" href="css/style.css"></head>
+<title>Sign in - SylverVibe Code - Exam Portal</title><link rel="stylesheet" href="css/style.css"></head>
 <body class="auth-page">
 <script>
 /* If the module below cannot start (a js file is missing or an old copy), say so instead of silently reloading. */
@@ -14,7 +14,7 @@ document.addEventListener("submit", function (e) {
 }, true);
 </script>
 <main class="auth-card">
-  <div class="brand"><span class="mark">ARK</span><span>Exam Scanner</span></div>
+  <div class="brand"><span class="mark logo"><img src="img/logo.png" alt="SylverVibe Code"></span><span>SylverVibe Code - Exam Portal</span></div>
   <div id="msg" class="notice" hidden role="alert"></div>
 
   <section id="signin">
@@ -54,7 +54,7 @@ document.addEventListener("submit", function (e) {
 
   <section id="forgot" hidden>
     <h1>Reset your password</h1>
-    <p class="muted">A reset link is sent to the <b>email address on your account</b> (the one you gave when your account was created). Enter your email, or your school code + Employee No. (teachers) or Exam ID No. (students).</p>
+    <p class="muted">A reset link is sent to the <b>email address on your account</b> (the one you gave when your account was created). Students: enter your Exam ID No. or email. <b>Teachers:</b> only your school\u2019s IT Admin can reset your password, please contact them.</p>
     <form id="ff" novalidate>
       <label id="fschoolWrap">School code <small>Teachers only. Leave blank otherwise.</small><input id="fschool" autocapitalize="characters"></label>
       <label>Email, Employee No. or Exam ID No.<input id="fwho" autocomplete="username" autocapitalize="none" required></label>
@@ -113,6 +113,7 @@ $("showForgot").onclick = () => view(true); $("backSignin").onclick = () => view
 $("ff").addEventListener("submit", async (e) => {
   e.preventDefault(); msg.hidden = true;
   const who = $("fwho").value.trim(); if (!who) return show("Enter your email, Employee No. or Exam ID No.");
+  if ($("fschool").value.trim()) return show("Teacher passwords can only be reset by your school's IT Admin. Please contact your IT Admin.");
   $("fgo").disabled = true;
   try {
     const r = await sendReset(who, $("fschool").value);

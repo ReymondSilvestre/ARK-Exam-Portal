@@ -1,5 +1,5 @@
 // Admin-level actions that Firebase only allows from server code.
-//  adminSetTempPassword : Super Admin (IT admins), school IT admin (teachers + students of that school), teacher (own students).
+//  adminSetTempPassword : Super Admin (IT admins), school IT admin (teachers + students of that school). Teachers cannot reset passwords.
 //                         Also used for the IT Admin's "Set password" action (an admin-chosen password instead of the default).
 //  adminDeleteUser      : Super Admin removes an IT admin; a school IT admin removes a teacher or student of that school.
 //  superClearSchoolData : Super Admin wipes ALL data of a school (teachers, students, exams, results, modules, logins)
@@ -36,7 +36,7 @@ function defaultPassword(s) {
 function canManage(me, myUid, t, st) {
   if (me.role === "superadmin") return t.role === "admin";
   if (me.role === "admin") return ["teacher", "student"].includes(t.role) && t.schoolId === me.schoolId;
-  return t.role === "student" && !!st && st.ownerUid === myUid;
+  return false; // teachers cannot reset passwords: only the IT Admin (or Super Admin) can
 }
 
 exports.adminSetTempPassword = onCall(async (req) => {

@@ -1,5 +1,5 @@
 {
-  "name": "ark-exam-scanner-functions",
+  "name": "sylvervibe-exam-portal-functions",
   "private": true,
   "main": "index.js",
   "engines": { "node": "20" },

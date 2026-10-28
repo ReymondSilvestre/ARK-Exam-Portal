@@ -1,4 +1,4 @@
-# ARK Exam Scanner - version 5 (online exams, filter icon)
+# SylverVibe Code - Exam Portal - version 5 (online exams, filter icon)
 
 ## New in this update: real emails + auto-capture scanner
 **Do this first:** Firestore > Rules > paste `firestore.rules` > Publish (a new `loginIndex` rule is needed). Replace the `js/` files, `css/style.css`, `login.html`, `admin.html`, `teacher.html`. No Cloud Function is needed for any of this (re-deploy `functions/` only if you use them, so removing an account also removes its lookup entry).

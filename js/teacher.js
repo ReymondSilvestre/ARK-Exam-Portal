@@ -2,7 +2,7 @@ import { requireRole, logout, db, esc, friendlyError, app, studentEmail, sharedE
 import { collection, query, where, getDocs, getDoc, doc, setDoc, addDoc, updateDoc, deleteDoc, deleteField, writeBatch, runTransaction, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signOut, deleteUser, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getAuth, createUserWithEmailAndPassword, signOut, deleteUser } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
 import { firebaseConfig } from "./firebase-config.js";
 import { TYPES, TYPE_SHORT, TERMS, termRank, isAuto, itemsOf, lettersOf, MAX_ITEMS, sheetSVG, scanSheet, score, missedText, identMatches, findCorners, SheetTracker } from "./omr.js";
@@ -68,7 +68,7 @@ function render() {
       <td class="actions"><button class="btn small danger" data-unjoin="${esc(s.enrollId)}">Remove from classroom</button></td></tr>`
       : `<tr><td>${esc(s.number)}</td><td>${esc(s.name)}${s.email ? `<small>${esc(s.email)}</small>` : ""}</td><td>${esc(bd(s.birthday))}</td><td>${ageOf(s.birthday)}</td>
       <td>${s.accountUid ? '<span class="badge active">Has login</span>' : '<span class="badge warn">No login yet</span>'}</td>
-      <td class="actions">${s.accountUid && s.email ? `<button class="btn small" data-mail="${esc(s.id)}">Email reset link</button>` : ""}${s.accountUid ? `<button class="btn small" data-pw="${esc(s.id)}">Reset password</button>` : `<button class="btn small" data-mk="${esc(s.id)}">Create login</button>`}
+      <td class="actions">${s.accountUid ? "" : `<button class="btn small" data-mk="${esc(s.id)}">Create login</button>`}
       <button class="btn small danger" data-rm="${esc(s.id)}">Remove</button></td></tr>`;
   let stBody = "";
   for (const c of fsec ? S.classes.filter((x) => x.id === fsec) : S.classes) { // "All sections": one group per section, names sorted inside each
@@ -217,21 +217,11 @@ $("stTbl").onclick = (e) => run(async () => {
     if (!S.joins.some((x) => x.id !== j.id && x.studentId === j.studentId)) await deleteDoc(doc(db, "teacherLinks", `${j.studentId}_${user.uid}`)).catch(() => {});
     await refresh(); return flash(`${j.studentName} was removed from ${j.className}.`, 1);
   }
-  const b = e.target.closest("[data-rm],[data-mk],[data-pw],[data-mail]"); if (!b) return;
-  const s = S.students.find((x) => x.id === (b.dataset.rm || b.dataset.mk || b.dataset.pw || b.dataset.mail)); if (!s) return;
-  if (b.dataset.mail !== undefined) {
-    if (!confirm(`Send a password-reset link to ${s.email}? ${s.name} can then choose a new password from their own inbox.`)) return;
-    await sendPasswordResetEmail(mainAuth, s.email); return flash(`Reset link sent to ${s.email}.`, 1);
-  }
+  const b = e.target.closest("[data-rm],[data-mk]"); if (!b) return;
+  const s = S.students.find((x) => x.id === (b.dataset.rm || b.dataset.mk)); if (!s) return;
   if (b.dataset.mk !== undefined) {
     await withCreator((a2) => makeLogin(s, a2));
     await refresh(); return flash(`Login created for ${s.name}. Username ${s.number}, password ${defaultStudentPassword(s)}.`, 1);
-  }
-  if (b.dataset.pw !== undefined) {
-    if (!confirm(`Reset the password of ${s.name} to birth year + first letter of last name (${defaultStudentPassword(s) || "birthday needed"})? They will choose a new one at next sign-in.`)) return;
-    try { await httpsCallable(getFunctions(app), "adminSetTempPassword")({ uid: s.accountUid, useDefault: true }); }
-    catch (err) { throw fnMissing(err) ? new Error("The password-reset service is not set up yet (README step G).") : err; }
-    return flash(`Password reset for ${s.name}: ${defaultStudentPassword(s)}`, 1);
   }
   if (!confirm(`Remove ${s.name} (${s.number}) and their login? Saved results for this student stay in the results list.`)) return;
   if (s.accountUid) await deleteDoc(doc(db, "users", s.accountUid)).catch(() => {});
