@@ -98,6 +98,26 @@
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && drawer.classList.contains("open")) close(); });
   window.matchMedia("(min-width:761px)").addEventListener("change", function (e) { if (e.matches && drawer.classList.contains("open")) close(); });
 
+  /* header scrolled out of view -> CSS floats the menu button so it stays reachable */
+  var ticking = false;
+  function onScroll() { if (ticking) return; ticking = true; requestAnimationFrame(function () { ticking = false; body.classList.toggle("scrolled", window.scrollY > 70); }); }
+  window.addEventListener("scroll", onScroll, { passive: true }); onScroll();
+
+  /* IT Admin: show the school name and the signed-in user right under the menu button (they live in the drawer otherwise) */
+  if (side) {
+    var sch = document.getElementById("school"), who = document.getElementById("who");
+    var ms = document.createElement("small"); ms.className = "mobschool"; ms.hidden = true;
+    var mw = document.createElement("div"); mw.className = "mobwho"; mw.hidden = true;
+    var h1 = top.querySelector("h1"); top.insertBefore(ms, h1); top.insertBefore(mw, h1);
+    var copy = function () {
+      ms.textContent = sch ? sch.textContent.trim() : ""; ms.hidden = !ms.textContent;
+      mw.textContent = who ? who.textContent.trim() : ""; mw.hidden = !mw.textContent;
+    };
+    var mo = new MutationObserver(copy);
+    [sch, who].forEach(function (n) { if (n) mo.observe(n, { childList: true, characterData: true, subtree: true }); });
+    copy();
+  }
+
   /* keep the button label in step with the active tab, and hide the whole menu while the tabs are hidden (student exam room) */
   function sync() {
     var has = !tabs || !tabs.hidden;
