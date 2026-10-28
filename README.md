@@ -1,5 +1,24 @@
 # SylverVibe Code - Exam Portal
 
+## Update: Registrar history log, header order
+**Do this first:** Firestore > Rules > paste `firestore.rules` > Publish (it adds the `registrarLog` collection). Then replace `registrar.html`, `js/registrar.js`, `js/auth.js` and `css/style.css`. No Cloud Functions or index changes.
+- **Header (all pages):** the school logo and school name are on top, and the signed-in user's name is underneath them.
+- **Registrar > History** (new tab): every registrar action is recorded with who did it (name and Employee No.), the date and time, the action and the record. Recorded: registering, **editing** (each changed field shown as old -> new), deleting a student, enrolling, removing from a section, adding / deleting a section, changing an adviser, importing a list (with the list of new / updated students), and changes to voucher types, clusters / strands and additional fields. A save with no changes is not recorded.
+- Filter by text, action, person and date range; **Download history (Excel)**; **Clear filters**. In the **Master list**, each student has a **History** button that opens the log filtered to that student.
+- Entries are append-only: the Firestore rules do not let the registrar change or delete them (only the super admin can delete).
+- Entries made before this update do not exist, so the log starts empty. The History tab shows the latest 300 matching entries; the Excel download has all matching entries.
+
+---
+
+## Update: Registrar page structure, per-section view and download
+- **Every registrar page now has its own button bar.** Each button shows one part of the page and hides the rest, so nothing is stacked: *Enrollment* (Enroll a student / Upload a section list / Enrolled in the section), *Sections & advisers* (Add a section / All sections / Section students), *Master list* (All students / View / download per section / Upload a list), *Settings* (Voucher types / Clusters / strands / Additional information).
+- **Master list > Download all (Excel)** downloads every student, as before.
+- **Master list > View / download per section**: a list of sections (filter by grade level, school year, term / quarter) with a **View** and a **Download** button on each row, plus **Not enrolled in any section**. *View* shows that section's students with their full master-list details (and an Edit button); *Download* saves that one section as Excel. **Download all sections** saves one Excel file with a sheet per section.
+- **Sections & advisers** now has a **Download** button per section and a section picker under *Section students*.
+- Only `registrar.html`, `js/registrar.js` and `css/style.css` changed. No new Firestore rules are needed.
+
+---
+
 ## Update: Registrar additional information, A-Z master list, header layout
 - **Registrar > Settings > Additional information**: add your own fields (text, number, date, dropdown, yes/no) for **Student registration**, **Enrollment** and **Master list**. Registration fields appear on the registration form, enrollment fields on the Enrollment form, master-list fields while editing a student from the Master list. All show as columns, are included in the Excel download/template, and are read from uploaded lists by matching the column title.
 - **Master list**: sort A-Z / Z-A / Student ID No., A-Z letter bar (first letter of the last name), and a scrolling list that shows about 12 students at a time with the scroll bar on the right.

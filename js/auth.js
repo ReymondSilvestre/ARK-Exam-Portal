@@ -156,7 +156,7 @@ export function requireRole(roles, { allowMustChange = false } = {}) {
 /* ---------- school identity (name + logo set by the IT Admin) ---------- */
 export const schoolTitle = (sc) => (sc && (sc.displayName || sc.name)) || "";
 /** Shows the school identity as ONE block (logo + school name) underneath the signed-in user's name, inside .brand.
- *  The user name stays on its own line above it. Falls back to the default mark when the school has no logo. */
+ *  The signed-in user's name is shown on its own line BELOW that block (see the .brand.has-school rule in style.css). Falls back to the default mark when the school has no logo. */
 export function applyBranding(sc) {
   if (!sc) return;
   const b = document.querySelector(".brand"); if (!b || document.getElementById("brandSchoolBox")) return;

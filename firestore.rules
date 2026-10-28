@@ -333,6 +333,14 @@ service cloud.firestore {
       allow delete: if isSuper();
     }
 
+    // History log of the registrar: who added, edited or deleted what. Append-only (nobody can edit or delete an entry except the super admin).
+    match /registrarLog/{id} {
+      allow read:   if ((isRegistrar() || isAdmin()) && inMySchool()) || isSuper();
+      allow create: if isRegistrar() && sameSchool() && request.resource.data.byUid == request.auth.uid;
+      allow update: if false;
+      allow delete: if isSuper();
+    }
+
     /* ---------------- other teacher-owned data ---------------- */
     match /{coll}/{id} {
       allow read:   if coll in ['classes','examinations','answerKeys','answerSheets'] && (isSuper() || (isStaff() && mayRead()) || (isAdmin() && inMySchool()));
