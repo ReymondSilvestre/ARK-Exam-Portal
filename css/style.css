@@ -239,8 +239,11 @@ details.bulk{border:1px dashed var(--line);border-radius:6px;padding:.5rem .8rem
 }
 
 .school-logo{height:2.4rem;width:2.4rem;object-fit:contain;border-radius:6px;background:#fff;border:1px solid var(--line)}
-.brand-school{display:block;margin:-.6rem 0 1rem;color:var(--muted,#666);font-weight:600}
-.side .brand-school{color:#bbb}
+.brand.has-school{flex-direction:column;align-items:flex-start;gap:.4rem}
+.school-id{display:flex;align-items:center;gap:.55rem;min-width:0}
+.school-id .mark.logo img{height:2.4rem}
+.brand-school{display:block;margin:0;color:var(--ink);font-weight:700;line-height:1.25;overflow-wrap:anywhere}
+.side .brand-school{color:#ddd}
 .logo-prev{height:5rem;width:5rem;object-fit:contain;border:1px dashed var(--line);border-radius:8px;background:#fff;display:grid;place-items:center;color:#999;font-size:.75rem;text-align:center}
 .icon-btn{background:none;border:1px solid #e6a1a6;color:#a30f1a;border-radius:6px;padding:.3rem .45rem;cursor:pointer;line-height:0}
 .icon-btn:hover{background:#fdeced}
@@ -414,22 +417,17 @@ details.bulk{border:1px dashed var(--line);border-radius:6px;padding:.5rem .8rem
 /* ---- v7.2: phone header = [logo] [school name / user name] [hamburger icon] ---- */
 .mobschool,.mobwho{display:none}
 @media screen and (max-width:760px){
-  .top{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:.1rem .7rem;margin-bottom:.9rem;
-       grid-template-areas:"logo school right" "logo who right"}
-  body.has-nav .top{grid-template-areas:"logo school nav" "logo who right"}
-  .top>.brand{display:contents}
-  .top>.brand>.mark,.top>.brand>.school-logo{grid-area:logo;align-self:center}
-  .top>.brand>.mark.logo img{height:46px}
-  .school-logo{height:2.9rem;width:2.9rem}
-  .top>.brand-school{grid-area:school;margin:0;min-width:0;align-self:end;font-size:1rem;font-weight:700;line-height:1.25;color:var(--ink);overflow-wrap:anywhere;white-space:normal}
-  .top>.brand>span:last-child{grid-area:who;align-self:start;min-width:0;max-width:none;overflow:visible;white-space:normal;overflow-wrap:anywhere;font-weight:600;color:var(--muted);font-size:.95rem;line-height:1.3}
+  .top{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:.1rem .7rem;margin-bottom:.9rem;grid-template-areas:"brand right"}
+  body.has-nav .top{grid-template-areas:"brand nav" "brand right"}
+  .top>.brand{grid-area:brand;margin:0;min-width:0}
+  .top>.brand>span:first-child{font-weight:600;color:var(--muted);font-size:.95rem;line-height:1.3;overflow-wrap:anywhere}
+  .school-logo{height:2.6rem;width:2.6rem}
   .top>.navbtn{grid-area:nav;justify-self:end}
   .top>:last-child{grid-area:right;margin:0;display:flex;align-items:center;justify-content:flex-end;gap:.4rem;flex-wrap:nowrap}
   body.has-nav .top>:last-child{align-self:start}
 
   /* student page: the name is already shown in the account card below (with section, Exam ID No. and age), so not in the header */
   body.student-page.has-nav .top>.brand>#who{display:none}
-  body.student-page.has-nav .top>.brand-school{align-self:center}
 
   /* hamburger: icon only */
   body.has-nav .navbtn{width:2.9rem;min-width:2.9rem;height:2.9rem;padding:0;justify-content:center;gap:0}
@@ -442,9 +440,9 @@ details.bulk{border:1px dashed var(--line);border-radius:6px;padding:.5rem .8rem
 
   /* IT Admin: school name / user name on the left, hamburger icon on the right, then the page title */
   body.has-nav .main .top{grid-template-columns:minmax(0,1fr) auto;gap:.1rem .7rem;
-       grid-template-areas:"school nav" "who right" "title title"}
-  body.has-nav .main .top .mobschool{display:block;grid-area:school;align-self:end;margin:0;font-size:1rem;font-weight:700;line-height:1.25;color:var(--ink);overflow-wrap:anywhere}
-  body.has-nav .main .top .mobwho{display:block;grid-area:who;align-self:start;font-weight:600;font-size:.95rem;color:var(--muted);overflow-wrap:anywhere}
+       grid-template-areas:"who nav" "school right" "title title"}
+  body.has-nav .main .top .mobschool{display:block;grid-area:school;align-self:start;margin:0;font-size:.95rem;font-weight:600;line-height:1.25;color:var(--muted);overflow-wrap:anywhere}
+  body.has-nav .main .top .mobwho{display:block;grid-area:who;align-self:end;font-weight:700;font-size:1rem;color:var(--ink);overflow-wrap:anywhere}
   body.has-nav .main .top h1{grid-area:title;margin:.6rem 0 0;font-size:1.25rem}
 }
 @media print{.navbtn,.navdrawer,.navscrim,.navclose,.mobschool,.mobwho{display:none!important}}
@@ -458,3 +456,10 @@ details.bulk{border:1px dashed var(--line);border-radius:6px;padding:.5rem .8rem
 .formgrp{border-top:1px solid var(--line);margin-top:1rem;padding-top:.8rem}
 .formgrp h3{margin:.2rem 0 .6rem}
 .req{color:var(--red)}
+.scrollbox{max-height:min(33rem,68vh);overflow:auto;border:1px solid var(--line);border-radius:6px}
+.scrollbox table{min-width:100%} .scrollbox th{position:sticky;top:0;z-index:1;box-shadow:0 1px 0 var(--line)}
+.azbar{display:flex;flex-wrap:wrap;gap:.25rem;margin:.8rem 0 .2rem}
+.azbar button{min-width:2rem;padding:.25rem .45rem;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;font-weight:600;cursor:pointer}
+.azbar button.on{background:var(--red);border-color:var(--red);color:#fff}
+.fgroup{border:1px solid var(--line);border-left:4px solid var(--red);border-radius:6px;padding:.8rem;margin-bottom:.8rem}
+.fgroup h3{margin:0 0 .4rem}

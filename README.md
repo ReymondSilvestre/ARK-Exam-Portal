@@ -1,5 +1,13 @@
 # SylverVibe Code - Exam Portal
 
+## Update: Registrar additional information, A-Z master list, header layout
+- **Registrar > Settings > Additional information**: add your own fields (text, number, date, dropdown, yes/no) for **Student registration**, **Enrollment** and **Master list**. Registration fields appear on the registration form, enrollment fields on the Enrollment form, master-list fields while editing a student from the Master list. All show as columns, are included in the Excel download/template, and are read from uploaded lists by matching the column title.
+- **Master list**: sort A-Z / Z-A / Student ID No., A-Z letter bar (first letter of the last name), and a scrolling list that shows about 12 students at a time with the scroll bar on the right.
+- **All users**: the signed-in user's name is on its own line; the school logo and school name are together as one block underneath it. (Admin side bar shows the school code under "IT Admin".)
+- No new Firestore rules are needed beyond the previous update.
+
+---
+
 ## New in this update: REGISTRAR role, master list, enrollment, advisers
 **Do this first:** Firestore > Rules > paste `firestore.rules` > Publish. Then replace the whole project (new files: `registrar.html`, `js/registrar.js`). If you deploy the Cloud Functions, deploy `functions/` again.
 

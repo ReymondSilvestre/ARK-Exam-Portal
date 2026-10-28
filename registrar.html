@@ -36,6 +36,8 @@
 <label>Guardian's name <small>Required if the student has no father or mother on record.</small><input id="rgGuardian" autocomplete="off"></label></div>
 <div class="row" style="margin-top:.6rem"><label>Guardian contact number<input id="rgGContact" inputmode="tel" autocomplete="off"></label>
 <label>Guardian's address<input id="rgGAddress" autocomplete="off"></label></div></div>
+<div class="formgrp" id="rgExtraBox" hidden><h3>Additional information</h3><div class="row" id="rgExtra"></div></div>
+<div class="formgrp" id="rgMasterBox" hidden><h3>Master list information</h3><p class="muted fine">Filled in after registration, while editing the student from the Master list.</p><div class="row" id="rgMaster"></div></div>
 <div class="row" style="margin-top:1rem"><button class="btn primary" id="rgSave">Save registration</button><button class="btn" id="rgCancel" type="button" hidden>Cancel editing</button></div>
 <p class="muted fine">Registered students go to the <b>Master list</b>. To place a student in a section, use the <b>Enrollment</b> tab.</p>
 </div></section>
@@ -52,6 +54,7 @@
 <label class="narrow">School year<input id="enYear" maxlength="9" placeholder="2026-2027"></label>
 <label>Cluster / strand<select id="enStrand"></select></label>
 <label>Section<select id="enSection"></select><small id="enSecHint"></small></label></div>
+<div class="row" id="enExtra" style="margin-top:.6rem"></div>
 <div class="row" style="margin-top:.8rem"><button class="btn primary" id="enSave">Enroll student</button></div>
 </div>
 <div class="panel"><h2>Upload a list for this section</h2>
@@ -77,9 +80,11 @@
 <div class="panel"><h2>Master list</h2>
 <div class="row"><label>Search<input id="mlQ" placeholder="Student ID No., LRN or name" autocomplete="off"></label>
 <label>Grade level<select id="mlGrade"></select></label><label>Voucher<select id="mlVoucher"></select></label>
+<label>Sort names<select id="mlSort"><option value="az">A &rarr; Z</option><option value="za">Z &rarr; A</option><option value="no">Student ID No.</option></select></label>
 <button class="btn" id="mlXlsx" type="button">Download Excel</button></div>
+<div class="azbar" id="mlLetters" role="group" aria-label="Filter by first letter of the last name"></div>
 <p class="muted fine" id="mlCount"></p>
-<div class="tablewrap"><table id="mlTbl"></table></div></div>
+<div class="scrollbox" id="mlScroll"><table id="mlTbl"></table></div></div>
 <div class="panel"><h2>Upload the overall master list</h2>
 <p class="muted fine">Excel or CSV. Column titles are recognised by name: <b>Student ID No., LRN, Voucher Type, Last Name, First Name, Middle Name, Suffix, Birthdate, Gender, Contact No., Address, Father's Name, Mother's Name, Guardian Name, Guardian Contact No., Guardian Address, Grade Level</b>. Existing students (same Student ID No.) are updated; blank cells never erase saved data. A single &quot;Last, First Middle&quot; <b>Name</b> column also works.</p>
 <div class="row"><label>Excel or CSV file<input type="file" id="mlFile" accept=".csv,.txt,.xlsx,.xls"></label><button class="btn" id="mlTpl" type="button">Download blank template</button></div></div>
@@ -91,6 +96,9 @@
 <div class="row"><label>Add a voucher type<input id="vtNew" maxlength="12" placeholder="e.g. QVR" autocomplete="off"></label><button class="btn primary" id="vtAdd">Add</button></div></div>
 <div class="panel"><h2>Clusters / strands</h2><div class="chiplist" id="stList"></div>
 <div class="row"><label>Add a cluster / strand<input id="stNew" maxlength="40" placeholder="e.g. TVL-ICT" autocomplete="off"></label><button class="btn primary" id="stAdd">Add</button></div></div>
+<div class="panel"><h2>Additional information</h2>
+<p class="muted fine">Add your own fields. <b>Student registration</b> fields appear on the registration form. <b>Enrollment</b> fields appear on the Enrollment form. <b>Master list</b> fields are filled in while editing a student from the Master list. All of them show as columns in the lists, can be downloaded to Excel, and are recognised by their title when you upload a list.</p>
+<div id="fieldsBox"></div></div>
 </section>
 </div>
 <script type="module" src="js/registrar.js"></script>

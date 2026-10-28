@@ -30,7 +30,7 @@ const normGender = (g) => (/^\s*m/i.test(g) ? "Male" : /^\s*f/i.test(g) ? "Femal
 const tsec = (x) => x?.createdAt?.seconds || 0;
 
 /* ---------- data ---------- */
-const S = { registry: [], sections: [], teachers: [], enrollments: [], vouchers: [...DEFAULT_VOUCHERS], strands: [...DEFAULT_STRANDS] };
+const S = { registry: [], sections: [], teachers: [], enrollments: [], vouchers: [...DEFAULT_VOUCHERS], strands: [...DEFAULT_STRANDS], fields: { reg: [], enroll: [], master: [] } };
 const bySchool = async (c, ...w) => (await getDocs(query(collection(db, c), where("schoolId", "==", SID), ...w))).docs.map((d) => ({ id: d.id, ...d.data() }));
 async function refresh() {
   await run(async () => {
@@ -43,11 +43,11 @@ async function refresh() {
     S.sections = cls.filter((c) => c.gradeLevel).sort((a, b) => a.name.localeCompare(b.name));
     S.enrollments = ens;
     S.teachers = tch.docs.map((d) => ({ uid: d.id, ...d.data() })).filter((t) => t.status === "active").sort((a, b) => String(a.displayName).localeCompare(String(b.displayName)));
-    if (set && set.exists()) { S.vouchers = set.data().voucherTypes || S.vouchers; S.strands = set.data().strands || S.strands; }
+    if (set && set.exists()) { S.vouchers = set.data().voucherTypes || S.vouchers; S.strands = set.data().strands || S.strands; const f = set.data().fields || {}; S.fields = { reg: f.reg || [], enroll: f.enroll || [], master: f.master || [] }; }
     render();
   });
 }
-const saveSettings = () => setDoc(doc(db, "registrarSettings", SID), { schoolId: SID, voucherTypes: S.vouchers, strands: S.strands, updatedAt: serverTimestamp() }, { merge: true });
+const saveSettings = () => setDoc(doc(db, "registrarSettings", SID), { schoolId: SID, voucherTypes: S.vouchers, strands: S.strands, fields: S.fields, updatedAt: serverTimestamp() }, { merge: true });
 
 /* ---------- navigation ---------- */
 function show(t) {
@@ -66,8 +66,58 @@ function render() {
   keep("mlGrade", options(GRADES, "All grade levels")); keep("mlVoucher", options(S.vouchers, "All voucher types"));
   keep("scAdv", S.teachers.map((t) => `<option value="${esc(t.uid)}">${esc(t.displayName)} (${esc(t.employeeId || "")})</option>`).join("") || `<option value="">No teacher accounts yet - ask the IT Admin</option>`);
   if (!$("enYear").value) $("enYear").value = schoolYearNow();
-  renderVoucherStrand(); renderMaster(); renderEnrollPicker(); renderSections(); renderEnrolled();
+  renderVoucherStrand(); renderFieldSettings(); renderExtras(); renderMaster(); renderEnrollPicker(); renderSections(); renderEnrolled();
 }
+
+/* ======================= ADDITIONAL INFORMATION (custom fields) ======================= */
+const FTYPES = { text: "Text", number: "Number", date: "Date", select: "Dropdown list", yesno: "Yes / No" };
+const GROUPS = { reg: "Student registration", enroll: "Enrollment", master: "Master list" };
+const colFields = () => [...S.fields.reg, ...S.fields.master];
+const fieldHtml = (f) => {
+  const a = `data-x="${esc(f.id)}"`, L = esc(f.label);
+  if (f.type === "select") return `<label>${L}<select ${a}><option value="">-</option>${(f.options || []).map((o) => `<option>${esc(o)}</option>`).join("")}</select></label>`;
+  if (f.type === "yesno") return `<label>${L}<select ${a}><option value="">-</option><option>Yes</option><option>No</option></select></label>`;
+  return `<label>${L}<input ${a} type="${f.type === "number" ? "number" : f.type === "date" ? "date" : "text"}" autocomplete="off"></label>`;
+};
+const readExtras = (boxId) => Object.fromEntries([...$(boxId).querySelectorAll("[data-x]")].map((el) => [el.dataset.x, el.value.trim()]));
+function drawExtra(boxId, fields, vals) {
+  const box = $(boxId), cur = { ...readExtras(boxId), ...(vals || {}) };
+  box.innerHTML = fields.map(fieldHtml).join("");
+  box.querySelectorAll("[data-x]").forEach((el) => { if (cur[el.dataset.x] !== undefined) el.value = cur[el.dataset.x]; });
+}
+function renderExtras(vals) {
+  drawExtra("rgExtra", S.fields.reg, vals); $("rgExtraBox").hidden = !S.fields.reg.length;
+  drawExtra("rgMaster", S.fields.master, vals); $("rgMasterBox").hidden = !(S.fields.master.length && editing);
+  drawExtra("enExtra", S.fields.enroll);
+}
+function renderFieldSettings() {
+  if ($("fieldsBox").contains(document.activeElement) && document.activeElement.matches("input")) return; // do not disturb typing
+  $("fieldsBox").innerHTML = Object.entries(GROUPS).map(([g, title]) => `<div class="fgroup" data-g="${g}"><h3>${title}</h3>
+    <div class="chiplist">${S.fields[g].map((f) => `<span class="tag">${esc(f.label)} <small style="display:inline;margin:0">(${FTYPES[f.type]}${f.type === "select" ? ": " + esc((f.options || []).join(", ")) : ""})</small><button type="button" data-frm="${g}" data-id="${esc(f.id)}" aria-label="Remove ${esc(f.label)}">&times;</button></span>`).join("") || '<span class="muted">No additional fields yet.</span>'}</div>
+    <div class="row"><label>Field title<input data-fl maxlength="40" placeholder="e.g. Religion" autocomplete="off"></label>
+    <label>Type<select data-ft>${Object.entries(FTYPES).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select></label>
+    <label data-fo hidden>Choices <small>Separate with commas</small><input data-fopt maxlength="300" placeholder="Catholic, Muslim, Others" autocomplete="off"></label>
+    <button class="btn primary" type="button" data-fadd="${g}">Add field</button></div></div>`).join("");
+}
+$("fieldsBox").onchange = (e) => { const t = e.target.closest("[data-ft]"); if (t) t.closest(".fgroup").querySelector("[data-fo]").hidden = t.value !== "select"; };
+$("fieldsBox").onclick = (e) => run(async () => {
+  const add = e.target.closest("[data-fadd]"), rm = e.target.closest("[data-frm]");
+  if (add) {
+    const box = add.closest(".fgroup"), g = add.dataset.fadd, label = box.querySelector("[data-fl]").value.trim(), type = box.querySelector("[data-ft]").value;
+    const options = box.querySelector("[data-fopt]").value.split(",").map((x) => x.trim()).filter(Boolean);
+    if (!label) return flash("Enter the field title.");
+    if (type === "select" && options.length < 2) return flash("Enter at least two choices, separated by commas.");
+    const all = [...S.fields.reg, ...S.fields.enroll, ...S.fields.master];
+    if (all.some((f) => f.label.toLowerCase() === label.toLowerCase())) return flash("A field with that title already exists.");
+    S.fields[g].push({ id: "f" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), label, type, ...(type === "select" ? { options } : {}) });
+    await saveSettings(); render(); return flash(`Added "${label}" to ${GROUPS[g]}.`, 1);
+  }
+  if (rm) {
+    const f = S.fields[rm.dataset.frm].find((x) => x.id === rm.dataset.id); if (!f) return;
+    if (!confirm(`Remove the field "${f.label}"? Values already saved stay in the records but are no longer shown.`)) return;
+    S.fields[rm.dataset.frm] = S.fields[rm.dataset.frm].filter((x) => x.id !== f.id); await saveSettings(); render();
+  }
+});
 
 /* ======================= STUDENT REGISTRATION ======================= */
 const F = { no: "rgNo", lrn: "rgLrn", last: "rgLast", first: "rgFirst", middle: "rgMiddle", suffix: "rgSuffix", bday: "rgBday", contact: "rgContact", address: "rgAddress",
@@ -76,7 +126,7 @@ let editing = null;
 $("rgBday").oninput = () => ($("rgAge").value = ageOf($("rgBday").value));
 function clearForm() {
   editing = null; Object.values(F).forEach((i) => ($(i).value = "")); $("rgAge").value = ""; $("rgGender").value = ""; $("rgVoucher").value = "";
-  $("rgNo").readOnly = false; $("rgHead").textContent = "Student registration"; $("rgSave").textContent = "Save registration"; $("rgCancel").hidden = true;
+  $("rgNo").readOnly = false; renderExtras({}); document.querySelectorAll("#rgExtra [data-x],#rgMaster [data-x]").forEach((el) => (el.value = "")); $("rgMasterBox").hidden = true; $("rgHead").textContent = "Student registration"; $("rgSave").textContent = "Save registration"; $("rgCancel").hidden = true;
 }
 $("rgCancel").onclick = clearForm;
 function fillForm(r) {
@@ -84,7 +134,7 @@ function fillForm(r) {
   $(F.no).value = r.studentNo; $(F.lrn).value = r.lrn || ""; $(F.last).value = r.lastName; $(F.first).value = r.firstName; $(F.middle).value = r.middleName || ""; $(F.suffix).value = r.suffix || "";
   $(F.bday).value = r.birthday || ""; $("rgAge").value = ageOf(r.birthday); $("rgGender").value = r.gender || ""; $(F.contact).value = r.contact || ""; $(F.address).value = r.address || "";
   $(F.father).value = r.father || ""; $(F.mother).value = r.mother || ""; $(F.guardian).value = r.guardianName || ""; $(F.gcontact).value = r.guardianContact || ""; $(F.gaddress).value = r.guardianAddress || "";
-  $("rgNo").readOnly = true; $("rgHead").textContent = `Edit registration - ${r.name}`; $("rgSave").textContent = "Save changes"; $("rgCancel").hidden = false;
+  $("rgNo").readOnly = true; renderExtras(r.extra || {}); document.querySelectorAll("#rgExtra [data-x],#rgMaster [data-x]").forEach((el) => (el.value = (r.extra || {})[el.dataset.x] ?? "")); $("rgHead").textContent = `Edit registration - ${r.name}`; $("rgSave").textContent = "Save changes"; $("rgCancel").hidden = false;
   show("reg"); scrollTo({ top: 0 });
 }
 /** Keeps the teacher-visible student record (name, birthday, gender) in step with the master list. */
@@ -97,7 +147,7 @@ $("rgSave").onclick = () => run(async () => {
   const v = (k) => $(F[k]).value.trim();
   const p = { gradeLevel: $("rgGrade").value, studentNo: v("no"), lrn: v("lrn").replace(/\s+/g, ""), voucherType: $("rgVoucher").value,
     lastName: v("last"), firstName: v("first"), middleName: v("middle"), suffix: v("suffix"), birthday: $(F.bday).value, gender: $("rgGender").value,
-    contact: v("contact"), address: v("address"), father: v("father"), mother: v("mother"), guardianName: v("guardian"), guardianContact: v("gcontact"), guardianAddress: v("gaddress") };
+    contact: v("contact"), address: v("address"), father: v("father"), mother: v("mother"), guardianName: v("guardian"), guardianContact: v("gcontact"), guardianAddress: v("gaddress"), extra: { ...readExtras("rgExtra"), ...readExtras("rgMaster") } };
   if (!p.studentNo || !isStuNo(p.studentNo)) return flash("Enter the Student ID No. (letters, numbers, dot, dash or underscore only).");
   if (p.lrn && !isLrn(p.lrn)) return flash("The LRN must be exactly 12 digits. Leave it blank if the student has no LRN yet.");
   if (!p.lastName || !p.firstName) return flash("Enter the last name and first name.");
@@ -110,7 +160,7 @@ $("rgSave").onclick = () => run(async () => {
   p.name = nameOf(p);
   const rec = { ...p, ...(old ? {} : { schoolId: SID, createdBy: user.uid, createdAt: serverTimestamp() }), updatedAt: serverTimestamp() };
   await setDoc(doc(db, "registry", id), rec, { merge: true });
-  const merged = { ...(old || {}), ...p, id }; await syncStudent(merged);
+  const merged = { ...(old || {}), ...p, extra: { ...(old?.extra || {}), ...p.extra }, id }; await syncStudent(merged);
   const was = editing; clearForm(); await refresh();
   flash(was ? `Saved changes for ${p.name}.` : `Registered ${p.name}. Next: enroll the student in a section.` , true);
   if (old?.examNo && p.lrn && old.examNo !== p.lrn) flash(`Saved. The Exam ID No. stays ${old.examNo} because the student is already enrolled; it is not changed afterwards.`, true);
@@ -120,18 +170,26 @@ $("rgSave").onclick = () => run(async () => {
 function latestEnrol(r) {
   return S.enrollments.filter((e) => e.registryId === r.id).sort((a, b) => (b.schoolYear || "").localeCompare(a.schoolYear || "") || termRank(b.term) - termRank(a.term) || tsec(b) - tsec(a))[0];
 }
+let mlLetter = "";
+const lastInit = (r) => (String(r.lastName || r.name || "").trim()[0] || "#").toUpperCase();
 function renderMaster() {
-  const q = $("mlQ").value.trim().toLowerCase(), g = $("mlGrade").value, vt = $("mlVoucher").value;
-  const rows = S.registry.filter((r) => (!g || r.gradeLevel === g) && (!vt || r.voucherType === vt) && (!q || [r.studentNo, r.lrn, r.name].join(" ").toLowerCase().includes(q)));
-  $("mlCount").textContent = `${rows.length} of ${S.registry.length} registered students`;
-  $("mlTbl").innerHTML = "<tr><th>Student ID No.</th><th>LRN</th><th>Name</th><th>Grade</th><th>Voucher</th><th>Birthdate</th><th>Age</th><th>Gender</th><th>Contact</th><th>Enrolled in</th><th></th></tr>" +
-    (rows.slice(0, 300).map((r) => { const e = latestEnrol(r);
+  const q = $("mlQ").value.trim().toLowerCase(), g = $("mlGrade").value, vt = $("mlVoucher").value, sort = $("mlSort").value;
+  const base = S.registry.filter((r) => (!g || r.gradeLevel === g) && (!vt || r.voucherType === vt) && (!q || [r.studentNo, r.lrn, r.name].join(" ").toLowerCase().includes(q)));
+  const have = new Set(base.map(lastInit));
+  $("mlLetters").innerHTML = `<button type="button" data-l="" class="${mlLetter ? "" : "on"}">All</button>` + "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((c) => `<button type="button" data-l="${c}" class="${mlLetter === c ? "on" : ""}" ${have.has(c) ? "" : 'style="opacity:.35"'}>${c}</button>`).join("");
+  const cmp = { az: (a, b) => a.name.localeCompare(b.name), za: (a, b) => b.name.localeCompare(a.name), no: (a, b) => String(a.studentNo).localeCompare(String(b.studentNo), undefined, { numeric: true }) }[sort];
+  const rows = base.filter((r) => !mlLetter || lastInit(r) === mlLetter).sort(cmp), xf = colFields(), n = 11 + xf.length;
+  $("mlCount").textContent = `${rows.length} of ${S.registry.length} registered students` + (rows.length > 12 ? " - scroll the list to see all" : "");
+  $("mlTbl").innerHTML = "<tr><th>Student ID No.</th><th>LRN</th><th>Name</th><th>Grade</th><th>Voucher</th><th>Birthdate</th><th>Age</th><th>Gender</th><th>Contact</th>" + xf.map((f) => `<th>${esc(f.label)}</th>`).join("") + "<th>Enrolled in</th><th></th></tr>" +
+    (rows.slice(0, 3000).map((r) => { const e = latestEnrol(r);
       return `<tr><td>${esc(r.studentNo)}</td><td>${esc(r.lrn || "-")}</td><td>${esc(r.name)}</td><td>${esc(r.gradeLevel || "")}</td><td>${esc(r.voucherType || "-")}</td><td>${esc(bd(r.birthday))}</td><td>${ageOf(r.birthday)}</td><td>${esc(r.gender || "")}</td><td>${esc(r.contact || "")}</td>
+      ${xf.map((f) => `<td>${esc((r.extra || {})[f.id] ?? "")}</td>`).join("")}
       <td>${e ? esc(e.sectionName) + `<small>${esc(e.term)} ${esc(e.schoolYear || "")}</small>` : '<span class="badge warn">Not enrolled</span>'}</td>
       <td class="actions"><button class="btn small" data-ed="${esc(r.id)}">Edit</button><button class="btn small" data-en="${esc(r.id)}">Enroll</button><button class="btn small danger" data-rm="${esc(r.id)}">Delete</button></td></tr>`; }).join("") ||
-      `<tr><td colspan="11">No students found.</td></tr>`) + (rows.length > 300 ? `<tr><td colspan="11">Showing the first 300. Narrow the search to see the rest.</td></tr>` : "");
+      `<tr><td colspan="${n}">No students found.</td></tr>`);
 }
-["mlQ", "mlGrade", "mlVoucher"].forEach((i) => ($(i).oninput = renderMaster));
+$("mlLetters").onclick = (e) => { const b = e.target.closest("[data-l]"); if (b) { mlLetter = b.dataset.l; renderMaster(); } };
+["mlQ", "mlGrade", "mlVoucher", "mlSort"].forEach((i) => ($(i).oninput = renderMaster));
 $("mlTbl").onclick = (e) => run(async () => {
   const b = e.target.closest("[data-ed],[data-en],[data-rm]"); if (!b) return;
   const r = S.registry.find((x) => x.id === (b.dataset.ed || b.dataset.en || b.dataset.rm)); if (!r) return;
@@ -150,11 +208,11 @@ $("mlXlsx").onclick = () => {
   if (!window.XLSX) return flash("The Excel writer did not load. Check your internet connection.");
   const rows = S.registry.map((r) => ({ "Student ID No.": r.studentNo, LRN: r.lrn || "", "Voucher Type": r.voucherType || "", "Last Name": r.lastName, "First Name": r.firstName, "Middle Name": r.middleName || "", Suffix: r.suffix || "",
     Birthdate: r.birthday || "", Age: ageOf(r.birthday), Gender: r.gender || "", "Contact No.": r.contact || "", Address: r.address || "", "Father's Name": r.father || "", "Mother's Name": r.mother || "",
-    "Guardian Name": r.guardianName || "", "Guardian Contact No.": r.guardianContact || "", "Guardian Address": r.guardianAddress || "", "Grade Level": r.gradeLevel || "" }));
+    "Guardian Name": r.guardianName || "", "Guardian Contact No.": r.guardianContact || "", "Guardian Address": r.guardianAddress || "", "Grade Level": r.gradeLevel || "", ...Object.fromEntries(colFields().map((f) => [f.label, (r.extra || {})[f.id] ?? ""])) }));
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Master list"); XLSX.writeFile(wb, `master-list-${SID}.xlsx`);
 };
 $("mlTpl").onclick = () => {
-  const head = ["Student ID No.", "LRN", "Voucher Type", "Last Name", "First Name", "Middle Name", "Suffix", "Birthdate", "Gender", "Contact No.", "Address", "Father's Name", "Mother's Name", "Guardian Name", "Guardian Contact No.", "Guardian Address", "Grade Level"];
+  const head = ["Student ID No.", "LRN", "Voucher Type", "Last Name", "First Name", "Middle Name", "Suffix", "Birthdate", "Gender", "Contact No.", "Address", "Father's Name", "Mother's Name", "Guardian Name", "Guardian Contact No.", "Guardian Address", "Grade Level", ...colFields().map((f) => f.label)];
   const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob(["\ufeff" + head.join(",") + "\n"], { type: "text/csv" })), download: "master-list-template.csv" });
   a.click(); URL.revokeObjectURL(a.href);
 };
@@ -250,11 +308,11 @@ function ctx() {
   const section = S.sections.find((s) => s.id === $("enSection").value), year = $("enYear").value.trim();
   if (!section) throw new Error("Choose a section. If the list is empty, add the section first under Sections & advisers.");
   if (!/^\d{4}-\d{4}$/.test(year)) throw new Error("Enter the school year like 2026-2027.");
-  return { section, gradeLevel: $("enGrade").value, term: $("enTerm").value, schoolYear: year, strand: $("enStrand").value };
+  return { section, gradeLevel: $("enGrade").value, term: $("enTerm").value, schoolYear: year, strand: $("enStrand").value, extra: readExtras("enExtra") };
 }
 /** One enrollment: the student's teacher-visible record (under the section's adviser), the enrollment record and the master list, in ONE all-or-nothing write.
  *  Exam ID No. = LRN, or the Student ID No. if there is no LRN yet; once set it never changes. */
-async function enrollOne(r, c) {
+async function enrollOne(r, c, rowExtra) {
   const examNo = r.examNo || r.lrn || r.studentNo, sec = c.section;
   if (S.registry.some((x) => x.id !== r.id && (x.examNo || x.lrn || x.studentNo) === examNo)) throw new Error(`${r.name}: the Exam ID No. ${examNo} belongs to another student.`);
   const b = writeBatch(db), eid = `${r.id}_${c.schoolYear}_${c.term}`.replace(/[\s/]+/g, "-");
@@ -263,7 +321,7 @@ async function enrollOne(r, c) {
     gradeLevel: c.gradeLevel, strand: c.strand || "", updatedAt: serverTimestamp(), ...(r.examNo ? {} : { createdAt: serverTimestamp() }) }, { merge: true });
   b.set(doc(db, "enrollmentRecords", eid), { schoolId: SID, registryId: r.id, studentNo: r.studentNo, lrn: r.lrn || "", examNo, name: r.name, birthday: r.birthday || "", gender: r.gender || "",
     gradeLevel: c.gradeLevel, term: c.term, schoolYear: c.schoolYear, strand: c.strand || "", sectionId: sec.id, sectionName: sec.name, adviserUid: sec.ownerUid, adviserName: sec.adviserName || "",
-    createdBy: user.uid, createdAt: serverTimestamp() });
+    extra: { ...(c.extra || {}), ...Object.fromEntries(Object.entries(rowExtra || {}).filter(([, v]) => v)) }, createdBy: user.uid, createdAt: serverTimestamp() }, { merge: true });
   b.update(doc(db, "registry", r.id), { examNo, gradeLevel: c.gradeLevel, updatedAt: serverTimestamp() });
   try { await b.commit(); }
   catch (e) { if (e.code === "permission-denied") throw new Error(`${r.name}: the Exam ID No. ${examNo} is already used by a student of another school, or you do not have permission.`); throw e; }
@@ -277,8 +335,8 @@ $("enSave").onclick = () => run(async () => {
 function renderEnrolled() {
   const sec = $("enSection").value, term = $("enTerm").value, year = $("enYear").value.trim();
   const list = S.enrollments.filter((e) => e.sectionId === sec && e.term === term && e.schoolYear === year).sort((a, b) => a.name.localeCompare(b.name));
-  $("enTbl").innerHTML = "<tr><th>Student ID No.</th><th>LRN</th><th>Name</th><th>Birthdate</th><th>Age</th><th>Gender</th></tr>" +
-    (list.map((e) => `<tr><td>${esc(e.studentNo)}</td><td>${esc(e.lrn || "-")}</td><td>${esc(e.name)}</td><td>${esc(bd(e.birthday))}</td><td>${ageOf(e.birthday)}</td><td>${esc(e.gender || "")}</td></tr>`).join("") || `<tr><td colspan="6">Nobody enrolled yet for the chosen section, term and school year.</td></tr>`);
+  $("enTbl").innerHTML = "<tr><th>Student ID No.</th><th>LRN</th><th>Name</th><th>Birthdate</th><th>Age</th><th>Gender</th>" + S.fields.enroll.map((f) => `<th>${esc(f.label)}</th>`).join("") + "</tr>" +
+    (list.map((e) => `<tr><td>${esc(e.studentNo)}</td><td>${esc(e.lrn || "-")}</td><td>${esc(e.name)}</td><td>${esc(bd(e.birthday))}</td><td>${ageOf(e.birthday)}</td><td>${esc(e.gender || "")}</td>${S.fields.enroll.map((f) => `<td>${esc((e.extra || {})[f.id] ?? "")}</td>`).join("")}</tr>`).join("") || `<tr><td colspan="${6 + S.fields.enroll.length}">Nobody enrolled yet for the chosen section, term and school year.</td></tr>`);
 }
 async function unenroll(id) {
   const e = S.enrollments.find((x) => x.id === id); if (!e) return;
@@ -342,11 +400,15 @@ async function readPeople(file) {
   if (!rows.length) throw new Error("The file is empty.");
   const col = {}; rows[0].forEach((h, i) => { const k = headerKey(h); if (k && !(k in col)) col[k] = i; });
   if (!("studentNo" in col) && !("lrn" in col)) throw new Error("The first row must have column titles including Student ID No. (or LRN). Download the blank template from the Master list tab.");
+  const xcol = {}; rows[0].forEach((h, i) => { const f = [...S.fields.reg, ...S.fields.master, ...S.fields.enroll].find((x) => x.label.toLowerCase() === String(h).trim().toLowerCase()); if (f) xcol[f.id] = i; });
+  const inEnroll = new Set(S.fields.enroll.map((f) => f.id));
   rows = rows.slice(1);
   return rows.map((r) => { const g = (k) => (k in col ? String(r[col[k]] ?? "").trim() : ""); const o = {};
     ["studentNo", "lrn", "voucher", "last", "first", "middle", "suffix", "gender", "contact", "address", "father", "mother", "guardianName", "guardianContact", "guardianAddress", "grade", "name"].forEach((k) => (o[k] = g(k)));
     o.birthday = parseDate(g("birthday")); o.lrn = o.lrn.replace(/\s+/g, "");
     if (o.name && !o.last && !o.first) Object.assign(o, parseName(o.name));
+    o.extra = {}; o.enExtra = {};
+    for (const [id, i] of Object.entries(xcol)) { const val = String(r[i] ?? "").trim(); if (val) (inEnroll.has(id) ? o.enExtra : o.extra)[id] = val; }
     return o; }).filter((o) => o.studentNo || o.lrn);
 }
 const matchGrade = (g) => { const n = /\d+/.exec(g || ""); return n ? GRADES.find((x) => x === "Grade " + +n[0]) || "" : /^k/i.test(g || "") ? "Kindergarten" : ""; };
@@ -362,7 +424,8 @@ async function upsertRow(o, i) {
   const patch = Object.fromEntries(Object.entries(f).filter(([, v]) => v)); // blank cells never erase saved data
   const base = old || {};
   if (!old && (!patch.lastName || !patch.firstName)) return { skip: `row ${i + 2} (${studentNo}): new student needs a last name and first name` };
-  const merged = { ...base, ...patch }; merged.name = nameOf(merged); patch.name = merged.name;
+  if (Object.keys(o.extra).length) patch.extra = o.extra;
+  const merged = { ...base, ...patch, extra: { ...(base.extra || {}), ...(patch.extra || {}) } }; merged.name = nameOf(merged); patch.name = merged.name;
   const rid2 = old ? old.id : id;
   await setDoc(doc(db, "registry", rid2), { ...patch, ...(old ? {} : { studentNo, schoolId: SID, createdBy: user.uid, createdAt: serverTimestamp() }), updatedAt: serverTimestamp() }, { merge: true });
   const reg = { ...base, ...merged, id: rid2, studentNo: base.studentNo || studentNo };
@@ -379,7 +442,7 @@ async function importFile(file, withEnrol) {
       try {
         const r = await upsertRow(o, i + j); if (r.skip) return skipped.push(r.skip);
         r.created ? created++ : updated++; if (!r.reg.birthday) noBday.push(r.reg.studentNo);
-        if (withEnrol) { await enrollOne(r.reg, c); enrolled++; }
+        if (withEnrol) { await enrollOne(r.reg, c, o.enExtra); enrolled++; }
       } catch (e) { skipped.push(`row ${i + j + 2}: ${friendlyError(e)}`); }
     }));
   }

@@ -155,18 +155,16 @@ export function requireRole(roles, { allowMustChange = false } = {}) {
 
 /* ---------- school identity (name + logo set by the IT Admin) ---------- */
 export const schoolTitle = (sc) => (sc && (sc.displayName || sc.name)) || "";
-/** Shows the school logo and name in the page's top bar / side bar (.brand). Falls back to the ARK mark. */
+/** Shows the school identity as ONE block (logo + school name) underneath the signed-in user's name, inside .brand.
+ *  The user name stays on its own line above it. Falls back to the default mark when the school has no logo. */
 export function applyBranding(sc) {
   if (!sc) return;
-  const b = document.querySelector(".brand"); if (!b) return;
-  if (sc.logo) {
-    const m = b.querySelector(".mark");
-    const img = Object.assign(document.createElement("img"), { src: sc.logo, alt: "", className: "school-logo" });
-    if (m) m.replaceWith(img); else b.prepend(img);
-  }
+  const b = document.querySelector(".brand"); if (!b || document.getElementById("brandSchoolBox")) return;
+  const box = Object.assign(document.createElement("div"), { id: "brandSchoolBox", className: "school-id" });
+  const mark = b.querySelector(".mark");
+  if (sc.logo) { box.append(Object.assign(document.createElement("img"), { src: sc.logo, alt: "", className: "school-logo" })); mark?.remove(); }
+  else if (mark) box.append(mark);
   const t = schoolTitle(sc);
-  if (t && !document.getElementById("brandSchool")) {
-    const n = document.createElement("small"); n.id = "brandSchool"; n.className = "brand-school"; n.textContent = t;
-    b.after(n);
-  }
+  if (t) { const n = document.createElement("span"); n.id = "brandSchool"; n.className = "brand-school"; n.textContent = t; box.append(n); }
+  b.classList.add("has-school"); b.append(box);
 }

@@ -13,7 +13,7 @@ const $ = (id) => document.getElementById(id);
 // The school's IT admin. Everything below is limited to this one school.
 const { user, profile, school } = await requireRole(["admin"]);
 const SID = profile.schoolId;
-$("who").textContent = profile.displayName; $("school").textContent = `${school.name} (${school.code})`;
+$("who").textContent = profile.displayName; $("school").textContent = `School code: ${school.code}`;
 $("out").onclick = logout;
 applyBranding(school);
 // Lets teachers (who cannot read the IT Admin's profile) build the shared reset-inbox address.
