@@ -448,3 +448,13 @@ details.bulk{border:1px dashed var(--line);border-radius:6px;padding:.5rem .8rem
   body.has-nav .main .top h1{grid-area:title;margin:.6rem 0 0;font-size:1.25rem}
 }
 @media print{.navbtn,.navdrawer,.navscrim,.navclose,.mobschool,.mobwho{display:none!important}}
+
+/* ---------- Registrar ---------- */
+.infogrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:.5rem 1rem;background:#fafafa;border:1px solid var(--line);border-left:4px solid var(--red);border-radius:6px;padding:.8rem;margin:.8rem 0}
+.infogrid span{display:block;color:var(--muted);font-size:.8rem} .infogrid b{display:block;overflow-wrap:anywhere}
+.chiplist{display:flex;flex-wrap:wrap;gap:.4rem;margin:.6rem 0}
+.chiplist .tag{display:inline-flex;align-items:center;gap:.4rem;border:1px solid var(--line);border-radius:99px;padding:.15rem .3rem .15rem .7rem;background:#fff;font-weight:600}
+.chiplist .tag button{border:0;background:#eee;border-radius:50%;width:1.4rem;height:1.4rem;cursor:pointer;line-height:1}
+.formgrp{border-top:1px solid var(--line);margin-top:1rem;padding-top:.8rem}
+.formgrp h3{margin:.2rem 0 .6rem}
+.req{color:var(--red)}

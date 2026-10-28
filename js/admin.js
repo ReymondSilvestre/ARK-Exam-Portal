@@ -66,20 +66,20 @@ const logAudit = (action, targetUid, details = {}) =>
 /* ---------- accounts of this school ---------- */
 let users = [], teachers = [];
 async function loadTeachers() {
-  const snap = await getDocs(query(collection(db, "users"), where("schoolId", "==", SID), where("role", "in", ["teacher", "student"])));
+  const snap = await getDocs(query(collection(db, "users"), where("schoolId", "==", SID), where("role", "in", ["teacher", "registrar", "student"])));
   users = snap.docs.map((d) => d.data()).sort((a, b) => String(a.displayName).localeCompare(String(b.displayName)));
   teachers = users.filter((u) => u.role === "teacher");
   renderTeachers();
   $("s-teachers").textContent = teachers.length;
   $("s-active").textContent = teachers.filter((t) => t.status === "active").length;
-  $("s-students").textContent = users.length - teachers.length;
+  $("s-students").textContent = users.filter((u) => u.role === "student").length;
 }
 function renderTeachers() {
   const q = $("q").value.trim().toLowerCase(), rf = $("roleF").value;
   const rows = users.filter((t) => (!rf || t.role === rf) && (!q || [t.displayName, t.employeeId, t.studentId].join(" ").toLowerCase().includes(q)));
   $("teachers").innerHTML = `<tr><th>Name</th><th>Role</th><th>Username</th><th>Status</th><th>Created</th><th></th></tr>` +
     (rows.length ? rows.map((t) => { const stu = t.role === "student"; return `<tr>
-      <td>${esc(t.displayName)}</td><td>${stu ? "student" : "faculty / teacher"}</td>
+      <td>${esc(t.displayName)}</td><td>${stu ? "student" : t.role === "registrar" ? "registrar" : "faculty / teacher"}</td>
       <td>${stu ? "Exam ID No. " + esc(t.studentId) : esc(school.code) + " / " + esc(t.employeeId)}${t.hasRealEmail ? `<small>${esc(t.email)}</small>` : ""}</td>
       <td><span class="badge ${esc(t.status)}">${esc(t.status)}</span></td><td>${fmt(t.createdAt)}</td>
       <td class="actions">
@@ -96,7 +96,7 @@ $("q").addEventListener("input", renderTeachers); $("roleF").addEventListener("c
 $("newT").addEventListener("submit", async (e) => {
   e.preventDefault();
   const f = Object.fromEntries(new FormData(e.target));
-  const lastName = f.lastName.trim(), firstName = f.firstName.trim(), mi = (f.mi || "").trim().slice(0, 1).toUpperCase(), employeeId = f.employeeId.trim(), birthday = f.birthday;
+  const role = f.role === "registrar" ? "registrar" : "teacher", lastName = f.lastName.trim(), firstName = f.firstName.trim(), mi = (f.mi || "").trim().slice(0, 1).toUpperCase(), employeeId = f.employeeId.trim(), birthday = f.birthday;
   if (!lastName || !firstName || !employeeId || !birthday) return flash("Enter the last name, first name, Employee No. and birthday.");
   // Typed email wins; otherwise ONE shared inbox: IT Admin email + Employee No. (adminemail+1001@gmail.com)
   const realEmail = cleanEmail(f.email) || sharedEmail(profile.email, employeeId);
@@ -116,16 +116,16 @@ $("newT").addEventListener("submit", async (e) => {
     const uid = cred.user.uid;
     try {
       await setDoc(doc(db, "users", uid), {
-        uid, role: "teacher", displayName: fullName(lastName, firstName, mi), lastName, firstName, middleInitial: mi,
+        uid, role, displayName: fullName(lastName, firstName, mi), lastName, firstName, middleInitial: mi,
         email, employeeId, birthday, schoolId: SID, schoolName: school.name, status: "active",
         mustChangePassword: true, createdAt: serverTimestamp(), createdBy: user.uid, ...(realEmail ? { hasRealEmail: true } : {}),
       });
-      if (realEmail) await setDoc(doc(db, "loginIndex", staffKey(school.code, employeeId)), { email, uid, role: "teacher", schoolId: SID, createdBy: user.uid, createdAt: serverTimestamp() });
+      if (realEmail) await setDoc(doc(db, "loginIndex", staffKey(school.code, employeeId)), { email, uid, role, schoolId: SID, createdBy: user.uid, createdAt: serverTimestamp() });
     } catch (err) { await deleteDoc(doc(db, "users", uid)).catch(() => {}); await deleteUser(cred.user).catch(() => {}); throw err; }
-    await logAudit("teacher.create", uid, { username: employeeId, ...(realEmail ? { email: realEmail } : {}) });
+    await logAudit(role + ".create", uid, { username: employeeId, ...(realEmail ? { email: realEmail } : {}) });
     await signOut(getAuth(second));
     e.target.reset();
-    popup("Teacher account created", `Sign-in: school code ${school.code}, Employee No. ${employeeId}${realEmail ? ` (or the email ${realEmail})` : ""}. Temporary password (birth year + first letter of last name). They must choose a new one at first sign-in.` + (realEmail ? ` Forgot-password links go to ${realEmail}.` : " No email was given, so password help goes through you."), pw);
+    popup((role === "registrar" ? "Registrar" : "Teacher") + " account created", `Sign-in: school code ${school.code}, Employee No. ${employeeId}${realEmail ? ` (or the email ${realEmail})` : ""}. Temporary password (birth year + first letter of last name). They must choose a new one at first sign-in.` + (realEmail ? ` Forgot-password links go to ${realEmail}.` : " No email was given, so password help goes through you."), pw);
     await refresh();
   } catch (err) { flash(friendlyError(err)); }
   finally { $("addBtn").disabled = false; deleteApp(second).catch(() => {}); }
@@ -190,8 +190,8 @@ async function setCustomPassword(t) {
 
 /* ---------- remove an account (Firestore AND Firebase Authentication) ---------- */
 async function removeAccount(u) {
-  const stu = u.role === "student", label = stu ? `student ${u.displayName} (Exam ID No. ${u.studentId})` : `teacher ${u.displayName} (Employee No. ${u.employeeId})`;
-  const extra = stu ? "" : "\n\nEverything this teacher owns is deleted too: sections, classroom codes, students (and their logins), examinations, results and modules.";
+  const stu = u.role === "student", label = stu ? `student ${u.displayName} (Exam ID No. ${u.studentId})` : `${u.role === "registrar" ? "registrar" : "teacher"} ${u.displayName} (Employee No. ${u.employeeId})`;
+  const extra = stu || u.role === "registrar" ? "" : "\n\nEverything this teacher owns is deleted too: sections, classroom codes, students (and their logins), examinations, results and modules.";
   if (!ask(`Permanently remove ${label}? Their login is deleted from Firebase and cannot be undone.${extra}`)) return;
   try {
     if (!USE_CLOUD_FUNCTION) throw { code: "functions/not-found" };

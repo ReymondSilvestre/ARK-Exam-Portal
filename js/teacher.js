@@ -68,8 +68,8 @@ function render() {
   const stRow = (s) => s.joined ? `<tr><td>${esc(s.number)}</td><td>${esc(s.name)}</td><td>-</td><td></td><td><span class="badge active">Joined by code</span></td>
       <td class="actions"><button class="btn small danger" data-unjoin="${esc(s.enrollId)}">Remove from classroom</button></td></tr>`
       : `<tr><td>${esc(s.number)}</td><td>${esc(s.name)}${s.email ? `<small>${esc(s.email)}</small>` : ""}</td><td>${esc(bd(s.birthday))}</td><td>${ageOf(s.birthday)}</td>
-      <td>${s.accountUid ? '<span class="badge active">Has login</span>' : '<span class="badge warn">No login yet</span>'}</td>
-      <td class="actions">${s.accountUid ? "" : `<button class="btn small" data-mk="${esc(s.id)}">Create login</button>`}
+      <td>${s.accountUid ? '<span class="badge active">Active</span>' : '<span class="badge warn">Not activated</span>'}</td>
+      <td class="actions">${s.accountUid ? "" : `<button class="btn small" data-mk="${esc(s.id)}">Activate account</button>`}
       <button class="btn small danger" data-rm="${esc(s.id)}">Remove</button></td></tr>`;
   let stBody = "";
   for (const c of fsec ? S.classes.filter((x) => x.id === fsec) : S.classes) { // "All sections": one group per section, names sorted inside each
@@ -77,7 +77,7 @@ function render() {
     if (!fsec && list.length) stBody += `<tr class="grp"><td colspan="6">${esc(c.name)} - ${list.length} student${list.length === 1 ? "" : "s"}</td></tr>`;
     stBody += list.map(stRow).join("");
   }
-  $("stTbl").innerHTML = "<tr><th>Exam ID No.</th><th>Name (Last, First M.I.)</th><th>Birthday</th><th>Age</th><th>Login</th><th></th></tr>" +
+  $("stTbl").innerHTML = "<tr><th>Exam ID No.</th><th>Name (Last, First M.I.)</th><th>Birthday</th><th>Age</th><th>Account</th><th></th></tr>" +
     (stBody || `<tr><td colspan="6">No students ${fsec ? "in this section" : "yet"}.</td></tr>`);
 
   const mix = (e) => { const c = {}; itemsOf(e).forEach((i) => (c[i.type] = (c[i.type] || 0) + 1)); return Object.entries(c).map(([t, n]) => `${TYPE_SHORT[t]} ${n}`).join(", "); };
@@ -202,12 +202,12 @@ async function makeLogin(s, a2) {
 $("stLogins").onclick = () => run(async () => {
   const c = clsOf($("stClass").value); if (!c) return flash("Choose a section first.");
   const todo = S.students.filter((s) => s.classId === c.id && !s.accountUid);
-  if (!todo.length) return flash("Everyone in this section already has a login.", 1);
-  if (!confirm(`Create logins for ${todo.length} student${todo.length === 1 ? "" : "s"} in ${c.name}?\nUsername: Exam ID No.  Password: birth year + first letter of last name.`)) return;
+  if (!todo.length) return flash("Everyone in this section is already activated.", 1);
+  if (!confirm(`Activate ${todo.length} student account${todo.length === 1 ? "" : "s"} in ${c.name}?\nUsername: Exam ID No. (LRN, or Student ID No.)  Password: birth year + first letter of last name.`)) return;
   $("stLogins").disabled = true; let ok = 0; const fail = [];
   try { await withCreator(async (a2) => { for (const s of todo) { try { await makeLogin(s, a2); ok++; } catch (e) { fail.push(`${s.name}: ${friendlyError(e)}`); } } }); }
   finally { $("stLogins").disabled = false; }
-  await refresh(); flash(`Created ${ok} login${ok === 1 ? "" : "s"}.` + (fail.length ? ` Not created: ${fail.slice(0, 3).join("; ")}${fail.length > 3 ? "..." : ""}` : ""), !fail.length);
+  await refresh(); flash(`Activated ${ok} account${ok === 1 ? "" : "s"}.` + (fail.length ? ` Not created: ${fail.slice(0, 3).join("; ")}${fail.length > 3 ? "..." : ""}` : ""), !fail.length);
 });
 $("stTbl").onclick = (e) => run(async () => {
   const u = e.target.closest("[data-unjoin]");
@@ -222,7 +222,7 @@ $("stTbl").onclick = (e) => run(async () => {
   const s = S.students.find((x) => x.id === (b.dataset.rm || b.dataset.mk)); if (!s) return;
   if (b.dataset.mk !== undefined) {
     await withCreator((a2) => makeLogin(s, a2));
-    await refresh(); return flash(`Login created for ${s.name}. Username ${s.number}, password ${defaultStudentPassword(s)}.`, 1);
+    await refresh(); return flash(`Account activated for ${s.name}. Username ${s.number}, password ${defaultStudentPassword(s)}.`, 1);
   }
   if (!confirm(`Remove ${s.name} (${s.number}) and their login? Saved results for this student stay in the results list.`)) return;
   if (s.accountUid) await deleteDoc(doc(db, "users", s.accountUid)).catch(() => {});

@@ -1,0 +1,98 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<link rel="icon" href="favicon.ico" sizes="any"><link rel="icon" href="favicon.png" type="image/png" sizes="512x512"><link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32"><link rel="apple-touch-icon" href="apple-touch-icon.png"><meta name="theme-color" content="#b3121f"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Registrar - SylverVibe Code - Exam Portal</title><link rel="stylesheet" href="css/style.css">
+<!-- SheetJS: used only to read Excel lists and to export the master list -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head><body><div class="wrap wide">
+<div class="top noprint"><div class="brand"><span class="mark logo"><img src="img/logo.png" alt="SylverVibe Code"></span><span id="who">Registrar</span></div>
+<span><span id="sync" class="sync"><i class="dot"></i><span>Online</span></span> <button class="btn small" id="out">Sign out</button></span></div>
+<div id="msg" class="notice noprint" hidden role="alert"></div>
+<div class="tabs noprint" id="tabs">
+<button class="btn" data-t="reg">Student registration</button><button class="btn" data-t="enroll">Enrollment</button>
+<button class="btn" data-t="sections">Sections &amp; advisers</button><button class="btn" data-t="master">Master list</button><button class="btn" data-t="settings">Settings</button></div>
+
+<!-- STUDENT REGISTRATION -->
+<section data-s="reg"><div class="panel">
+<h2 id="rgHead">Student registration</h2>
+<div class="row">
+<label>Grade level <span class="req">*</span><select id="rgGrade"></select></label>
+<label>Student ID No. <span class="req">*</span><input id="rgNo" autocomplete="off" maxlength="30"></label>
+<label>LRN <small>12 digits. Leave blank if the student has none yet.</small><input id="rgLrn" inputmode="numeric" autocomplete="off" maxlength="12"></label>
+<label>Voucher type<select id="rgVoucher"></select></label></div>
+<div class="row" style="margin-top:.6rem">
+<label>Last name <span class="req">*</span><input id="rgLast" autocomplete="off"></label>
+<label>First name <span class="req">*</span><input id="rgFirst" autocomplete="off"></label>
+<label>Middle name<input id="rgMiddle" autocomplete="off"></label>
+<label class="narrow">Suffix <small>Optional</small><input id="rgSuffix" maxlength="6" autocomplete="off" placeholder="Jr., III"></label></div>
+<div class="row" style="margin-top:.6rem">
+<label>Birthdate <span class="req">*</span><input type="date" id="rgBday"></label>
+<label class="narrow">Age<input id="rgAge" readonly tabindex="-1"><small>From the birthdate</small></label>
+<label>Gender <span class="req">*</span><select id="rgGender"><option value="">Choose</option><option>Male</option><option>Female</option></select></label>
+<label>Contact No.<input id="rgContact" inputmode="tel" autocomplete="off"></label></div>
+<div class="row" style="margin-top:.6rem"><label>Address<input id="rgAddress" autocomplete="off"></label></div>
+
+<div class="formgrp"><h3>Guardian / parents information</h3>
+<div class="row"><label>Father's name<input id="rgFather" autocomplete="off"></label><label>Mother's name<input id="rgMother" autocomplete="off"></label>
+<label>Guardian's name <small>Required if the student has no father or mother on record.</small><input id="rgGuardian" autocomplete="off"></label></div>
+<div class="row" style="margin-top:.6rem"><label>Guardian contact number<input id="rgGContact" inputmode="tel" autocomplete="off"></label>
+<label>Guardian's address<input id="rgGAddress" autocomplete="off"></label></div></div>
+<div class="row" style="margin-top:1rem"><button class="btn primary" id="rgSave">Save registration</button><button class="btn" id="rgCancel" type="button" hidden>Cancel editing</button></div>
+<p class="muted fine">Registered students go to the <b>Master list</b>. To place a student in a section, use the <b>Enrollment</b> tab.</p>
+</div></section>
+
+<!-- ENROLLMENT -->
+<section data-s="enroll" hidden>
+<div class="panel"><h2>Enrollment</h2>
+<div class="row"><label>Find a registered student<input id="enQ" placeholder="Student ID No., LRN or name" autocomplete="off"></label>
+<label>Student<select id="enStu"></select></label></div>
+<div class="infogrid" id="enInfo" hidden></div>
+<div class="row" style="margin-top:.6rem">
+<label>Grade level<select id="enGrade"></select></label>
+<label>Term / quarter<select id="enTerm"></select></label>
+<label class="narrow">School year<input id="enYear" maxlength="9" placeholder="2026-2027"></label>
+<label>Cluster / strand<select id="enStrand"></select></label>
+<label>Section<select id="enSection"></select><small id="enSecHint"></small></label></div>
+<div class="row" style="margin-top:.8rem"><button class="btn primary" id="enSave">Enroll student</button></div>
+</div>
+<div class="panel"><h2>Upload a list for this section</h2>
+<p class="muted fine">Uses the grade level, term / quarter, school year, cluster / strand and section chosen above. Every student on the list is registered (if new) and enrolled in that section. Accepted: Excel or CSV with the same columns as the master list (Student ID No. and LRN identify the student; a student already in the master list only needs the ID).</p>
+<div class="row"><label>Excel or CSV file<input type="file" id="enFile" accept=".csv,.txt,.xlsx,.xls"></label></div></div>
+<div class="panel"><div class="listbar"><h2 style="margin:0">Enrolled in the chosen section</h2></div>
+<div class="tablewrap"><table id="enTbl"></table></div></div>
+</section>
+
+<!-- SECTIONS -->
+<section data-s="sections" hidden>
+<div class="panel"><h2>Add a section</h2>
+<p class="muted fine">The adviser is chosen from the school's teacher accounts. The adviser sees the section and its students on the Teacher page and activates the student accounts.</p>
+<div class="row"><label>Grade level<select id="scGrade"></select></label><label>Cluster / strand<select id="scStrand"></select></label>
+<label>Section name<input id="scName" placeholder="Ruby" autocomplete="off"></label><label>Adviser<select id="scAdv"></select></label>
+<button class="btn primary" id="scAdd">Add section</button></div></div>
+<div class="panel"><div class="row"><label>Show grade level<select id="scFilter"></select></label></div><div class="tablewrap"><table id="scTbl"></table></div></div>
+<div class="panel" id="scViewBox" hidden><h2 id="scViewHead">Students</h2><div class="tablewrap"><table id="scView"></table></div></div>
+</section>
+
+<!-- MASTER LIST -->
+<section data-s="master" hidden>
+<div class="panel"><h2>Master list</h2>
+<div class="row"><label>Search<input id="mlQ" placeholder="Student ID No., LRN or name" autocomplete="off"></label>
+<label>Grade level<select id="mlGrade"></select></label><label>Voucher<select id="mlVoucher"></select></label>
+<button class="btn" id="mlXlsx" type="button">Download Excel</button></div>
+<p class="muted fine" id="mlCount"></p>
+<div class="tablewrap"><table id="mlTbl"></table></div></div>
+<div class="panel"><h2>Upload the overall master list</h2>
+<p class="muted fine">Excel or CSV. Column titles are recognised by name: <b>Student ID No., LRN, Voucher Type, Last Name, First Name, Middle Name, Suffix, Birthdate, Gender, Contact No., Address, Father's Name, Mother's Name, Guardian Name, Guardian Contact No., Guardian Address, Grade Level</b>. Existing students (same Student ID No.) are updated; blank cells never erase saved data. A single &quot;Last, First Middle&quot; <b>Name</b> column also works.</p>
+<div class="row"><label>Excel or CSV file<input type="file" id="mlFile" accept=".csv,.txt,.xlsx,.xls"></label><button class="btn" id="mlTpl" type="button">Download blank template</button></div></div>
+</section>
+
+<!-- SETTINGS -->
+<section data-s="settings" hidden>
+<div class="panel"><h2>Voucher types</h2><div class="chiplist" id="vtList"></div>
+<div class="row"><label>Add a voucher type<input id="vtNew" maxlength="12" placeholder="e.g. QVR" autocomplete="off"></label><button class="btn primary" id="vtAdd">Add</button></div></div>
+<div class="panel"><h2>Clusters / strands</h2><div class="chiplist" id="stList"></div>
+<div class="row"><label>Add a cluster / strand<input id="stNew" maxlength="40" placeholder="e.g. TVL-ICT" autocomplete="off"></label><button class="btn primary" id="stAdd">Add</button></div></div>
+</section>
+</div>
+<script type="module" src="js/registrar.js"></script>
+<script src="js/mobile.js" defer></script>
+</body></html>

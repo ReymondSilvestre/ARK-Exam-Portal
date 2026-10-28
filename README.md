@@ -1,5 +1,26 @@
 # SylverVibe Code - Exam Portal
 
+## New in this update: REGISTRAR role, master list, enrollment, advisers
+**Do this first:** Firestore > Rules > paste `firestore.rules` > Publish. Then replace the whole project (new files: `registrar.html`, `js/registrar.js`). If you deploy the Cloud Functions, deploy `functions/` again.
+
+**Flow**
+1. **IT Admin** > Accounts > *Add a faculty / teacher or registrar account* > **Account type: Registrar**. The registrar signs in on the *Teacher / Registrar / IT Admin* tab with **school code + Employee No.** (temporary password = birth year + first letter of last name, same as teachers) and lands on `registrar.html`.
+2. **Registrar** (`registrar.html`):
+   - **Student registration**: grade level, Student ID No., LRN, voucher type (PUB / ALS / ESC, more can be added in *Settings*), last / first / middle name, suffix (optional), birthdate (age is automatic), gender, contact no., address; father, mother, guardian (required when there is no father or mother), guardian contact and address.
+   - **Master list**: every registered student, search / filter, edit, delete, **Download Excel**, and **upload the overall master list** (Excel or CSV; blank template included). Existing Student ID Nos. are updated, blank cells never erase saved data.
+   - **Sections & advisers**: create Grade / Cluster-Strand / Section and **choose the adviser from the teacher accounts**. The adviser can be changed at any time (the section's students move to the new adviser; the old classroom code is cleared).
+   - **Enrollment**: find the student (name, birthday, age, gender come from the registration), choose grade level, term / quarter, school year, cluster / strand and section. You can also **upload a list for one section** (it registers new students and enrolls everyone in the chosen section, term and year).
+3. **Teacher (adviser)**: the section and its students appear on the Teacher page. The teacher presses **Activate account** (or *Activate all student accounts in this section*). Teachers no longer add sections or students themselves.
+4. **Student** signs in with the **Exam ID No. = LRN**, or the **Student ID No. if there is no LRN yet**. Password stays birth year + first letter of last name until the first sign-in. The Exam ID No. is printed on answer sheets and used everywhere an "Exam ID" was used before.
+
+**Notes**
+- The Exam ID No. is fixed at the first enrollment. If an LRN is entered later for an already-enrolled student, the old Exam ID No. stays so the login and results are not broken.
+- A registration of a student whose account is already activated can only be deleted after the IT Admin removes the account.
+- New Firestore collections: `registry` (master list), `enrollmentRecords`, `registrarSettings`. Sections made by the registrar are normal `classes` documents owned by the adviser.
+- Guardian details, address and voucher type stay in the registrar's records; teachers only receive name, birthday, gender, LRN and Student ID No.
+
+---
+
 ## New in this update: phone-friendly layout, hamburger menu, modules for one student
 **Do this first:** Firestore > Rules > paste `firestore.rules` > Publish (needed for one-student modules). Then replace the whole project (new file: `js/mobile.js`).
 

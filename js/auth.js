@@ -14,7 +14,7 @@ export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 export const homeFor = (role) =>
-  role === "superadmin" ? "superadmin.html" : role === "admin" ? "admin.html" : role === "student" ? "student.html" : "teacher.html";
+  role === "superadmin" ? "superadmin.html" : role === "admin" ? "admin.html" : role === "registrar" ? "registrar.html" : role === "student" ? "student.html" : "teacher.html";
 
 /* ---------- logins ----------
    Students: Exam ID No.                      -> EXAMID@student.ark-exam.app

@@ -16,13 +16,16 @@
 <!-- SECTIONS -->
 <section data-s="classes"><div class="panel"><h2>Sections</h2>
 <p class="muted fine">Every section has its own <b>classroom code</b>. Give it to students of other teachers in your school: they join from their account and appear under that section (their own section and teacher stay separate). They then see your exam results and modules.</p>
-<div class="row noprint"><label>Class / section<input id="clName" placeholder="Grade 8 - Ruby"></label><button class="btn primary" id="clAdd">Add section</button></div>
+<p class="notice ok noprint">Sections are created by the <b>Registrar</b>, who also assigns the adviser. You see the sections where you are the adviser.</p>
+<div class="row noprint" hidden><label>Class / section<input id="clName" placeholder="Grade 8 - Ruby"></label><button class="btn primary" id="clAdd">Add section</button></div>
 <div class="tablewrap"><table id="clTbl"></table></div></div></section>
 
 <!-- STUDENTS -->
 <section data-s="students" hidden><div class="panel"><h2>Students</h2>
-<div class="row"><label>Section<select id="stClass"></select></label>
-<label>Last name<input id="stLast" autocomplete="off"></label>
+<div class="notice ok"><b>Students are registered and enrolled by the Registrar.</b> Students assigned to your sections appear in the class list below. Press <b>Activate account</b> to let a student sign in. Username = <b>Exam ID No.</b> (the student's LRN, or the Student ID No. if there is no LRN yet).</div>
+<div class="row"><label>Section<select id="stClass"></select></label></div>
+<div hidden id="stManual">
+<div class="row"><label>Last name<input id="stLast" autocomplete="off"></label>
 <label>First name<input id="stFirst" autocomplete="off"></label>
 <label class="narrow">M.I.<input id="stMi" maxlength="1" autocomplete="off"></label></div>
 <div class="row" style="margin-top:.6rem"><label>Birthday<input type="date" id="stBday"></label>
@@ -33,9 +36,10 @@
 <div class="row" style="margin-top:.8rem"><label>Import a class list (Excel or CSV)
 <input type="file" id="stCsv" accept=".csv,.txt,.xlsx,.xls">
 <small>Columns: <b>Exam ID No.</b>, <b>Last Name</b>, <b>First Name</b>, <b>M.I.</b>, <b>Birthday</b> (YYYY-MM-DD), <b>Email</b> (optional). A blank Exam ID No. is created automatically. A single "Last, First M." column also works.</small></label></div>
-<h3>Student logins</h3>
-<p class="muted fine">Username = Exam ID No. Temporary password = birth year + first letter of the last name (example <b>2012D</b>). The student must choose a new password at first sign-in. If you entered the student's <b>real email</b>, the login is created with that email: the student can still sign in with the Exam ID No. Enter the email <b>before</b> creating the login. Password resets are done only by the school's <b>IT Admin</b>.</p>
-<div class="row"><button class="btn" id="stLogins">Create logins for everyone in this section</button></div>
+</div>
+<h3>Activate student accounts</h3>
+<p class="muted fine">Username = Exam ID No. Temporary password = birth year + first letter of the last name (example <b>2012D</b>). The student must choose a new password at first sign-in. If you entered the student's <b>real email</b>, the account is created with that email: the student can still sign in with the Exam ID No. Password resets are done only by the school's <b>IT Admin</b>.</p>
+<div class="row"><button class="btn" id="stLogins">Activate all student accounts in this section</button></div>
 <div class="listbar noprint"><h3>Class list</h3>
 <div class="fpop" id="stFilter"><button type="button" class="btn small iconbtn" aria-haspopup="true" aria-expanded="false" title="Filter and sort the class list"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18l-7 8.5V19l-4 2v-8.5z"/></svg><span>Filter</span></button>
 <div class="fpanel" hidden><label>Section<select id="stFSec"></select></label>

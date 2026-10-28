@@ -13,9 +13,12 @@ service cloud.firestore {
     function isSuper()     { return liveAccount() && me().role == 'superadmin'; }
     function isAdmin()     { return liveAccount() && me().role == 'admin'; }     // the school's IT admin
     function isTeacher()   { return liveAccount() && me().role == 'teacher'; }
+    function isRegistrar() { return liveAccount() && me().role == 'registrar'; }   // enrols students, assigns advisers
     function isStaff()     { return isAdmin() || isTeacher(); }                  // the IT admin has every teacher feature
     function isStudent()   { return liveAccount() && me().role == 'student'; }
 
+    function validAdviser(uid) { return uid is string && get(/databases/$(database)/documents/users/$(uid)).data.role == 'teacher'
+                                   && get(/databases/$(database)/documents/users/$(uid)).data.schoolId == me().schoolId; }
     function studentRec(sid) { return get(/databases/$(database)/documents/students/$(sid)).data; }
     function myStudent()     { return studentRec(me().studentId); }
     function classCode(c)    { return get(/databases/$(database)/documents/classCodes/$(c)).data; }
@@ -79,7 +82,8 @@ service cloud.firestore {
 
     /* ---------------- accounts ---------------- */
     match /users/{uid} {
-      allow read: if (signedIn() && request.auth.uid == uid) || isSuper() || (isAdmin() && inMySchool());
+      allow read: if (signedIn() && request.auth.uid == uid) || isSuper() || (isAdmin() && inMySchool())
+        || (isRegistrar() && resource.data.role == 'teacher' && inMySchool());
 
       allow create: if request.resource.data.keys().hasOnly(
             ['uid','role','displayName','lastName','firstName','middleInitial','email','hasRealEmail','employeeId','studentId','birthday','status','mustChangePassword','createdAt','createdBy','schoolId','schoolName'])
@@ -91,14 +95,14 @@ service cloud.firestore {
           (isSuper() && request.resource.data.role == 'admin'
               && existsAfter(/databases/$(database)/documents/schools/$(request.resource.data.schoolId)))
           // School IT admin creates a faculty / teacher account in their own school
-          || (isAdmin() && request.resource.data.role == 'teacher' && sameSchool())
+          || (isAdmin() && request.resource.data.role in ['teacher', 'registrar'] && sameSchool())
           // A teacher (or the IT admin) creates a login for one of their own students
           || (isStaff() && request.resource.data.role == 'student' && sameSchool()
               && studentRec(request.resource.data.studentId).ownerUid == request.auth.uid)
         );
 
       allow update: if
-        (isAdmin() && resource.data.role in ['teacher', 'student'] && inMySchool()
+        (isAdmin() && resource.data.role in ['teacher', 'registrar', 'student'] && inMySchool()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
           && request.resource.data.status in ['active', 'suspended'])
         ||
@@ -110,8 +114,8 @@ service cloud.firestore {
           && request.resource.data.mustChangePassword == false
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['mustChangePassword', 'passwordChangedAt']));
 
-      allow delete: if (isAdmin() && resource.data.role in ['teacher', 'student'] && inMySchool())
-        || (isSuper() && resource.data.role in ['admin', 'teacher', 'student'])
+      allow delete: if (isAdmin() && resource.data.role in ['teacher', 'registrar', 'student'] && inMySchool())
+        || (isSuper() && resource.data.role in ['admin', 'teacher', 'registrar', 'student'])
         || (isStaff() && resource.data.role == 'student' && studentRec(resource.data.studentId).ownerUid == request.auth.uid);
     }
 
@@ -127,7 +131,7 @@ service cloud.firestore {
         && request.resource.data.createdBy == request.auth.uid
         && request.resource.data.schoolId == me().schoolId
         && (
-          (isAdmin() && request.resource.data.role == 'teacher' && key.matches(me().schoolId.lower() + '[.].+'))
+          (isAdmin() && request.resource.data.role in ['teacher', 'registrar'] && key.matches(me().schoolId.lower() + '[.].+'))
           || (isStaff() && request.resource.data.role == 'student' && request.resource.data.studentId.lower() == key
               && studentRec(request.resource.data.studentId).ownerUid == request.auth.uid)
         );
@@ -161,7 +165,7 @@ service cloud.firestore {
       allow list: if isSuper() || (isStaff() && resource.data.ownerUid == request.auth.uid);
       allow create: if isStaff() && mine() && sameSchool() && request.resource.data.code == code;
       allow update: if isStaff() && owns();
-      allow delete: if (isStaff() && owns()) || isSuper();
+      allow delete: if (isStaff() && owns()) || isSuper() || (isRegistrar() && inMySchool());
     }
     // A student joins a classroom with the teacher's code. Document id = studentId_classId.
     match /enrollments/{id} {
@@ -201,14 +205,19 @@ service cloud.firestore {
     /* ---------------- students ---------------- */
     // Document id = Exam ID No. Owned by the adviser (home teacher) who created it.
     match /students/{sid} {
-      allow read: if isSuper() || (isStaff() && mayRead()) || (isAdmin() && inMySchool())
+      allow read: if isSuper() || (isStaff() && mayRead()) || (isAdmin() && inMySchool()) || (isRegistrar() && inMySchool())
         || (isStudent() && me().studentId == sid);
-      allow create: if isStaff() && mine() && sameSchool() && request.resource.data.number == sid;
+      allow create: if (isStaff() && mine() && sameSchool() && request.resource.data.number == sid)
+        // the registrar enrols a student under an adviser (a teacher of this school)
+        || (isRegistrar() && sameSchool() && request.resource.data.number == sid && validAdviser(request.resource.data.ownerUid));
       allow update: if (isStaff() && owns() && sameOwner())
+        || (isRegistrar() && inMySchool() && sameSchool() && request.resource.data.number == sid
+            && (request.resource.data.ownerUid == resource.data.ownerUid || validAdviser(request.resource.data.ownerUid)))
         || (isStudent() && me().studentId == sid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['accountUid'])
             && request.resource.data.accountUid == request.auth.uid);
-      allow delete: if (isStaff() && owns()) || isSuper();
+      allow delete: if (isStaff() && owns()) || isSuper()
+        || (isRegistrar() && inMySchool() && !('accountUid' in resource.data));   // a student who was already activated is removed by the IT Admin
     }
 
     /* ---------------- results (a student sees results from EVERY teacher) ---------------- */
@@ -293,6 +302,35 @@ service cloud.firestore {
         && studentSees(request.resource.data.ownerUid, get(/databases/$(database)/documents/examPapers/$(request.resource.data.examId)).data.classId);
       allow update: if false;
       allow delete: if (isStaff() && owns()) || isSuper();   // "Retake": the teacher lets the student start over
+    }
+
+    /* ---------------- REGISTRAR: sections, master list, enrolment ---------------- */
+    // Sections created by the registrar are ordinary `classes` documents whose ownerUid is the ADVISER (a teacher account).
+    match /classes/{id} {
+      allow read:   if isRegistrar() && inMySchool();
+      allow create: if isRegistrar() && sameSchool() && validAdviser(request.resource.data.ownerUid);
+      allow update: if isRegistrar() && inMySchool() && sameSchool() && validAdviser(request.resource.data.ownerUid);
+      allow delete: if isRegistrar() && inMySchool();
+    }
+    // Master list of every registered student of the school. Document id = schoolCode_StudentIDNo.
+    match /registry/{id} {
+      allow read:   if (isRegistrar() || isAdmin()) && inMySchool() || isSuper();
+      allow create: if isRegistrar() && sameSchool() && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isRegistrar() && inMySchool() && sameSchool();
+      allow delete: if (isRegistrar() && inMySchool()) || isSuper();
+    }
+    // One record per enrolment (student + school year + term / quarter).
+    match /enrollmentRecords/{id} {
+      allow read:   if (isRegistrar() || isAdmin()) && inMySchool() || isSuper();
+      allow create: if isRegistrar() && sameSchool() && validAdviser(request.resource.data.adviserUid);
+      allow update: if isRegistrar() && inMySchool() && sameSchool() && validAdviser(request.resource.data.adviserUid);
+      allow delete: if (isRegistrar() && inMySchool()) || isSuper();
+    }
+    // Registrar's lists (voucher types, clusters / strands). Document id = school code.
+    match /registrarSettings/{id} {
+      allow read:   if ((isRegistrar() || isAdmin()) && id == me().schoolId) || isSuper();
+      allow create, update: if isRegistrar() && id == me().schoolId && request.resource.data.schoolId == me().schoolId;
+      allow delete: if isSuper();
     }
 
     /* ---------------- other teacher-owned data ---------------- */

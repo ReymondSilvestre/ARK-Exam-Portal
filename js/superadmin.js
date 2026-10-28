@@ -91,7 +91,7 @@ async function delMany(ref, docs) {
 }
 const idsOf = (snap) => snap.docs.map((d) => d.id);
 const SCHOOL_COLLECTIONS = ["scanResults", "examAttempts", "examSubmissions", "examKeys", "examPapers", "modules",
-  "examinations", "answerKeys", "answerSheets", "enrollments", "teacherLinks", "classCodes", "students", "classes", "loginIndex"];
+  "examinations", "answerKeys", "answerSheets", "enrollments", "teacherLinks", "classCodes", "students", "classes", "loginIndex", "enrollmentRecords", "registry", "registrarSettings"];
 async function eraseSchoolData(schoolId, removeSchool) {
   const sweep = async (coll, field, value) => {
     const snap = await getDocs(query(collection(db, coll), where(field, "==", value)));

@@ -35,9 +35,10 @@
 
     <section data-view="teachers" hidden>
       <div class="panel">
-        <h2>Add a faculty / teacher account</h2>
-        <p class="muted">Only you can create teacher accounts for this school. Teachers then create the accounts of their own advisory students.</p>
+        <h2>Add a faculty / teacher or registrar account</h2>
+        <p class="muted">Only you can create teacher and registrar accounts for this school. The <b>Registrar</b> registers and enrols students and assigns each section's adviser; the adviser (teacher) then activates the student accounts.</p>
         <form id="newT" class="row" novalidate>
+          <label>Account type<select name="role"><option value="teacher">Faculty / Teacher</option><option value="registrar">Registrar</option></select></label>
           <label>Last name<input name="lastName" autocomplete="off" required></label>
           <label>First name<input name="firstName" autocomplete="off" required></label>
           <label class="narrow">M.I.<input name="mi" maxlength="1" autocomplete="off"></label>
@@ -46,11 +47,11 @@
           <label>Email <small>Optional. Used for password reset.</small><input name="email" type="email" autocomplete="off" placeholder="Leave blank: reset links go to your inbox"></label>
           <button class="btn primary" id="addBtn">Create account</button>
         </form>
-        <small>Username = Employee No. (with the school code). Temporary password = birth year + first letter of the last name (example <b>1985D</b>). The teacher must choose a new password at first sign-in. If you enter the teacher's <b>real email</b>, the account is created with that email: they can still sign in with school code + Employee No., and <b>Forgot your password?</b> sends the reset link to that email.</small>
+        <small>Username = Employee No. (with the school code), for teachers and registrars alike. Temporary password = birth year + first letter of the last name (example <b>1985D</b>). The teacher must choose a new password at first sign-in. If you enter the teacher's <b>real email</b>, the account is created with that email: they can still sign in with school code + Employee No., and <b>Forgot your password?</b> sends the reset link to that email.</small>
       </div>
       <div class="panel">
         <div class="row"><label>Search<input id="q" placeholder="Name, Employee No. or Exam ID No."></label>
-          <label>Show<select id="roleF"><option value="">Teachers and students</option><option value="teacher">Teachers only</option><option value="student">Students only</option></select></label></div>
+          <label>Show<select id="roleF"><option value="">Teachers and students</option><option value="teacher">Teachers only</option><option value="registrar">Registrars only</option><option value="student">Students only</option></select></label></div>
         <div class="tablewrap"><table id="teachers"></table></div>
       </div>
     </section>

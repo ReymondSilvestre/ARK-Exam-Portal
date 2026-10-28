@@ -35,7 +35,7 @@ function defaultPassword(s) {
 /** May `me` manage account `t`? `st` = the student record when t is a student. */
 function canManage(me, myUid, t, st) {
   if (me.role === "superadmin") return t.role === "admin";
-  if (me.role === "admin") return ["teacher", "student"].includes(t.role) && t.schoolId === me.schoolId;
+  if (me.role === "admin") return ["teacher", "registrar", "student"].includes(t.role) && t.schoolId === me.schoolId;
   return false; // teachers cannot reset passwords: only the IT Admin (or Super Admin) can
 }
 
@@ -44,7 +44,7 @@ exports.adminSetTempPassword = onCall(async (req) => {
   const { uid, password, useDefault } = req.data || {};
   if (typeof uid !== "string" || !uid) throw new HttpsError("invalid-argument", "Missing account.");
   const t = (await db.doc(`users/${uid}`).get()).data();
-  if (!t || !["admin", "teacher", "student"].includes(t.role)) throw new HttpsError("not-found", "That account was not found.");
+  if (!t || !["admin", "teacher", "registrar", "student"].includes(t.role)) throw new HttpsError("not-found", "That account was not found.");
   const st = t.role === "student" ? (await db.doc(`students/${t.studentId}`).get()).data() : null;
   if (!canManage(me, req.auth.uid, t, st)) throw new HttpsError("permission-denied", "You cannot reset that account.");
 
@@ -83,7 +83,7 @@ exports.adminDeleteUser = onCall(async (req) => {
   const t = (await db.doc(`users/${uid}`).get()).data();
   if (!t) { await dropAuth(uid); return { ok: true, note: "No profile; login removed." }; }
   if (t.role === "superadmin") throw new HttpsError("permission-denied", "That account cannot be removed here.");
-  if (me.role === "superadmin" ? t.role !== "admin" : (t.schoolId !== me.schoolId || !["teacher", "student"].includes(t.role)))
+  if (me.role === "superadmin" ? t.role !== "admin" : (t.schoolId !== me.schoolId || !["teacher", "registrar", "student"].includes(t.role)))
     throw new HttpsError("permission-denied", "You cannot remove that account.");
 
   if (t.role === "teacher") {
@@ -116,7 +116,7 @@ exports.adminDeleteUser = onCall(async (req) => {
 const SCHOOL_COLLECTIONS = [
   "scanResults", "examAttempts", "examSubmissions", "examKeys", "examPapers", "moduleChunks", "modules",
   "examinations", "answerKeys", "answerSheets", "enrollments", "teacherLinks", "classCodes", "students", "classes",
-  "resetRequests", "loginIndex",
+  "resetRequests", "loginIndex", "enrollmentRecords", "registry", "registrarSettings",
 ];
 // Deleting a lot of data can take a while: give these two functions the maximum time.
 const HEAVY = { timeoutSeconds: 540, memory: "512MiB" };
