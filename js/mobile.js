@@ -39,7 +39,7 @@
   var btn = document.createElement("button");
   btn.type = "button"; btn.className = "navbtn"; btn.setAttribute("aria-label", "Open menu");
   btn.setAttribute("aria-expanded", "false");
-  btn.innerHTML = ICON + '<span class="navcur">Menu</span>';
+  btn.innerHTML = ICON; // icon only; the current page is announced through aria-label
   top.insertBefore(btn, top.firstChild);
 
   var scrim = document.createElement("div"); scrim.className = "navscrim"; scrim.hidden = true; body.appendChild(scrim);
@@ -123,7 +123,8 @@
     var has = !tabs || !tabs.hidden;
     body.classList.toggle("has-nav", has);
     btn.hidden = !has;
-    btn.querySelector(".navcur").textContent = currentLabel();
+    btn.setAttribute("aria-label", "Open menu" + (tabs ? " (now on " + currentLabel() + ")" : ""));
+    btn.title = "Menu";
   }
   if (tabs) new MutationObserver(sync).observe(tabs, { attributes: true, attributeFilter: ["class", "hidden"], childList: true, subtree: true, characterData: true });
   sync();
