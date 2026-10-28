@@ -1,4 +1,14 @@
-# SylverVibe Code - Exam Portal - version 5 (online exams, filter icon)
+# SylverVibe Code - Exam Portal
+
+## New in this update: phone-friendly layout, hamburger menu, modules for one student
+**Do this first:** Firestore > Rules > paste `firestore.rules` > Publish (needed for one-student modules). Then replace the whole project (new file: `js/mobile.js`).
+
+- **Hamburger menu on phones / small screens (760 px and below).** Teacher and Student pages: the row of tab buttons is replaced by a menu button (shows the current page name). It opens a slide-in menu with every tab, the IT Admin link (if shown) and Sign out. IT Admin page: the side bar slides in from the left. Close with the X, by tapping outside, or Esc. Desktop layout is unchanged.
+- **Readable tables on phones.** Every table is shown as stacked cards (label above value, action buttons at the bottom of each card) instead of side-scrolling. Done automatically by `js/mobile.js`, so no table code had to change.
+- **Easier forms on phones.** One field per line, 16 px inputs (no zoom on iPhone), larger tap targets, filter panel opens as a bottom sheet, full-width buttons.
+- **Modules: send to one student only.** Modules > *Send to* > **One student only**, then choose the section and the student. Only that student (and you) can see it; the student's list shows a "For you only" tag. *A whole section* works as before.
+
+---
 
 ## New in this update: real emails + auto-capture scanner
 **Do this first:** Firestore > Rules > paste `firestore.rules` > Publish (a new `loginIndex` rule is needed). Replace the `js/` files, `css/style.css`, `login.html`, `admin.html`, `teacher.html`. No Cloud Function is needed for any of this (re-deploy `functions/` only if you use them, so removing an account also removes its lookup entry).

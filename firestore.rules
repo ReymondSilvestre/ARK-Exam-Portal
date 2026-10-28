@@ -221,9 +221,15 @@ service cloud.firestore {
     }
 
     /* ---------------- modules (teaching files, stored in chunks) ---------------- */
+    // A module may be sent to ONE student: it then carries `studentId` (and a classId that matches no section),
+    // and only that student (plus its owner teacher) can read it.
+    function sentToMe(d) { return isStudent() && d.get('studentId', '') == me().studentId; }
     match /modules/{id} {
-      allow read:   if isSuper() || (isStaff() && mayRead()) || studentSees(resource.data.ownerUid, resource.data.classId);
-      allow create: if isStaff() && mine();
+      allow read:   if isSuper() || (isStaff() && mayRead()) || studentSees(resource.data.ownerUid, resource.data.classId) || sentToMe(resource.data);
+      allow create: if isStaff() && mine()
+                    && (!('studentId' in request.resource.data)
+                        || (request.resource.data.studentId is string
+                            && studentRec(request.resource.data.studentId).schoolId == me().schoolId));
       allow update: if isStaff() && owns() && sameOwner();
       allow delete: if (isStaff() && owns()) || isSuper();
     }
@@ -231,7 +237,8 @@ service cloud.firestore {
       allow read:   if isSuper() || (isStaff() && mayRead())
                     || studentSees(
                           get(/databases/$(database)/documents/modules/$(resource.data.moduleId)).data.ownerUid,
-                          get(/databases/$(database)/documents/modules/$(resource.data.moduleId)).data.classId);
+                          get(/databases/$(database)/documents/modules/$(resource.data.moduleId)).data.classId)
+                    || sentToMe(get(/databases/$(database)/documents/modules/$(resource.data.moduleId)).data);
       allow create: if isStaff() && mine();
       allow update: if isStaff() && owns() && sameOwner();
       allow delete: if (isStaff() && owns()) || isSuper();

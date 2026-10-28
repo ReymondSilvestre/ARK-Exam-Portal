@@ -103,8 +103,16 @@
 
 <!-- MODULES -->
 <section data-s="modules" hidden><div class="panel"><h2>Upload a module</h2>
-<p class="muted fine">Students see modules for their own section (or for all your sections), organised by term / quarter.</p>
-<div class="row"><label>Title<input id="mdTitle" maxlength="120"></label><label>Term / quarter<select id="mdTerm"></select></label><label>Section<select id="mdClass"></select></label></div>
+<p class="muted fine">Students see modules for their own section (or for all your sections), organised by term / quarter. You can also send a module to <b>one student only</b>.</p>
+<div class="row"><label>Title<input id="mdTitle" maxlength="120"></label><label>Term / quarter<select id="mdTerm"></select></label></div>
+<div class="sendto"><span class="lbl">Send to</span>
+<div class="modes" id="mdMode" style="margin-top:.4rem">
+<button type="button" class="mode on" data-mdmode="class"><b>A whole section</b><span>Every student in the section you choose (or all your sections).</span></button>
+<button type="button" class="mode" data-mdmode="one"><b>One student only</b><span>Only the student you pick can see this module. Nobody else in the class will.</span></button></div>
+<div class="row" style="margin-top:.7rem">
+<label id="mdClassL">Section<select id="mdClass"></select></label>
+<label id="mdStuSecL" hidden>Section of the student<select id="mdStuSec"></select></label>
+<label id="mdStuL" hidden>Student<select id="mdStu"></select></label></div></div>
 <div class="row" style="margin-top:.6rem"><label>Description (optional)<input id="mdDesc" maxlength="300"></label></div>
 <div class="row" style="margin-top:.6rem"><label>File (PDF, Word, PowerPoint, image... up to 8 MB)<input type="file" id="mdFile"></label>
 <label>or a link (Google Drive, YouTube...)<input id="mdUrl" type="url" placeholder="https://"></label>
@@ -154,4 +162,5 @@
 <h2 style="margin-top:1rem">Item analysis (% correct)</h2><div class="q" id="items"></div></div></section>
 </div>
 <script type="module" src="js/teacher.js"></script>
+<script src="js/mobile.js" defer></script>
 </body></html>

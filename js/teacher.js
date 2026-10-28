@@ -52,6 +52,7 @@ function render() {
   const sec = S.classes.map((c) => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("");
   keep("stClass", opts(S.classes, (c) => c.name, "Add a section first"));
   keep("exClass", `<option value="">All sections</option>` + sec); keep("mdClass", `<option value="">All my sections</option>` + sec);
+  keep("mdStuSec", opts(S.classes, (c) => c.name, "Add a section first")); fillMdStudents();
   const eo = opts(S.exams, (e) => `${e.term ? "[" + e.term + "] " : ""}${e.title} (${e.className})`, "Create an exam first");
   ["shExam", "scExam", "reExam", "kvExam"].forEach((i) => keep(i, eo));
   keep("scSec", `<option value="">All sections</option>` + sec); keep("reSec", `<option value="">All sections</option>` + sec);
@@ -92,8 +93,8 @@ function render() {
   $("exList").innerHTML = exHtml || `<p class="muted">No examinations yet. Press <b>+ Create exam</b> to make one.</p>`;
 
   const mds = S.modules.filter((m) => !$("mdFilter").value || (m.term || "") === $("mdFilter").value);
-  $("mdTbl").innerHTML = "<tr><th>Title</th><th>Section</th><th>File</th><th>Uploaded</th><th></th></tr>" +
-    (groupRows(mds, 5, (m) => `<tr><td class="wrapcell"><b>${esc(m.title)}</b>${m.description ? `<br><span class="muted fine">${esc(m.description)}</span>` : ""}</td><td>${esc(m.className)}</td>
+  $("mdTbl").innerHTML = "<tr><th>Title</th><th>Sent to</th><th>File</th><th>Uploaded</th><th></th></tr>" +
+    (groupRows(mds, 5, (m) => `<tr><td class="wrapcell"><b>${esc(m.title)}</b>${m.description ? `<br><span class="muted fine">${esc(m.description)}</span>` : ""}</td><td>${m.studentId ? `<span class="badge one">One student</span> ${esc(m.studentName || m.studentId)}` : esc(m.className)}</td>
       <td>${m.kind === "link" ? "Link" : esc(m.fileName) + " (" + sizeText(m.size) + ")"}</td><td>${m.createdAt?.toDate ? m.createdAt.toDate().toLocaleDateString() : "-"}</td>
       <td class="actions"><button class="btn small" data-open="${esc(m.id)}">${m.kind === "link" ? "Open" : "Download"}</button><button class="btn small danger" data-delmd="${esc(m.id)}">Remove</button></td></tr>`) || "<tr><td colspan=5>No modules yet.</td></tr>");
   drawSheet(); if (!$("kvBody").closest("[data-ev]").hidden) renderKey();
@@ -493,14 +494,30 @@ resetBuilder();
 
 
 /* ---------- modules: files for students, organised by term / quarter ---------- */
+let mdMode = "class"; // "class" = a whole section / all sections, "one" = a single student
+function fillMdStudents() {
+  const sec = $("mdStuSec").value, list = S.students.filter((s) => s.classId === sec).sort(byName);
+  keep("mdStu", list.map((s) => `<option value="${esc(s.id)}">${esc(s.name)} (${esc(s.number)})</option>`).join("") || `<option value="">No students in this section</option>`);
+}
+function setMdMode(m) {
+  mdMode = m;
+  document.querySelectorAll("#mdMode [data-mdmode]").forEach((b) => b.classList.toggle("on", b.dataset.mdmode === m));
+  $("mdClassL").hidden = m === "one"; $("mdStuSecL").hidden = $("mdStuL").hidden = m !== "one";
+}
+$("mdMode").onclick = (e) => { const b = e.target.closest("[data-mdmode]"); if (b) setMdMode(b.dataset.mdmode); };
+$("mdStuSec").onchange = fillMdStudents;
 $("mdAdd").onclick = () => run(async () => {
   const title = $("mdTitle").value.trim(), file = $("mdFile").files[0], url = $("mdUrl").value.trim();
+  const one = mdMode === "one", stu = one ? S.students.find((s) => s.id === $("mdStu").value) : null;
   if (!title) return flash("Enter a title for the module.");
+  if (one && !stu) return flash("Choose the student who should receive this module.");
   if (!file && !url) return flash("Choose a file or paste a link.");
   if (file && file.size > MAX_BYTES) return flash(`That file is ${sizeText(file.size)}. The limit is 8 MB: upload a smaller file or paste a link instead.`);
   if (!file && !safeUrl(url)) return flash("The link must start with http:// or https://");
   const c = clsOf($("mdClass").value), ref = doc(collection(db, "modules")), term = $("mdTerm").value;
-  const base = { ownerUid: user.uid, schoolId: SID, teacherName: profile.displayName, title, term, classId: c ? c.id : "", className: c ? c.name : "All my sections", description: $("mdDesc").value.trim() };
+  const target = one ? { classId: "__student", className: "Only: " + stu.name, studentId: stu.id, studentName: stu.name } // "__student" matches no section, so only this student can read it
+    : { classId: c ? c.id : "", className: c ? c.name : "All my sections" };
+  const base = { ownerUid: user.uid, schoolId: SID, teacherName: profile.displayName, title, term, ...target, description: $("mdDesc").value.trim() };
   const prog = $("mdProg"); $("mdAdd").disabled = true; prog.hidden = !file; prog.value = 0;
   let tried = 0, n = 0;
   try {
@@ -513,7 +530,7 @@ $("mdAdd").onclick = () => run(async () => {
     } else await setDoc(ref, { ...base, kind: "link", url, createdAt: serverTimestamp() });
   } finally { $("mdAdd").disabled = false; prog.hidden = true; }
   store.set("ark.term", term); ["mdTitle", "mdDesc", "mdUrl", "mdFile"].forEach((i) => ($(i).value = ""));
-  await refresh(); flash("Module uploaded. Students in that section can now see it.", 1);
+  await refresh(); flash(one ? `Module sent to ${stu.name} only.` : "Module uploaded. Students in that section can now see it.", 1);
 });
 $("mdTbl").onclick = (e) => run(async () => {
   const o = e.target.closest("[data-open]"), d = e.target.closest("[data-delmd]");

@@ -32,6 +32,7 @@ async function loadAll() {
   const pairs = new Map([[`${S.ownerUid}|${S.classId}`, [S.ownerUid, S.classId]], [`${S.ownerUid}|`, [S.ownerUid, ""]]]);
   rooms.forEach((r) => { pairs.set(`${r.ownerUid}|${r.classId}`, [r.ownerUid, r.classId]); pairs.set(`${r.ownerUid}|`, [r.ownerUid, ""]); });
   const got = await Promise.allSettled([...pairs.values()].map(([o, c]) => getDocs(query(collection(db, "modules"), where("ownerUid", "==", o), where("classId", "==", c)))));
+  got.push(...await Promise.allSettled([getDocs(query(collection(db, "modules"), where("studentId", "==", profile.studentId)))])); // modules sent to me alone
   const seen = new Set(); modules = [];
   got.forEach((g) => g.status === "fulfilled" && g.value.docs.forEach((d) => { if (!seen.has(d.id)) { seen.add(d.id); modules.push({ id: d.id, ...d.data() }); } }));
   modules.sort((a, b) => byTerm(a, b) || (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
@@ -65,7 +66,7 @@ function render() {
       <td class="wrapcell">${(r.missedList || []).length ? r.missedList.map((m) => `<span class="wr">${esc(m)}</span>`).join("") : "None"}</td></tr>`) || "<tr><td colspan=7>No exam results yet.</td></tr>");
   const mt = $("mTerm").value, ms = modules.filter((m) => !mt || (m.term || "") === mt);
   $("mTbl").innerHTML = "<tr><th>Module</th><th>Teacher</th><th>File</th><th>Uploaded</th><th></th></tr>" +
-    (grouped(ms, 5, (m) => `<tr><td class="wrapcell"><b>${esc(m.title)}</b>${m.description ? `<br><span class="muted fine">${esc(m.description)}</span>` : ""}</td><td>${esc(m.teacherName || "-")}</td>
+    (grouped(ms, 5, (m) => `<tr><td class="wrapcell"><b>${esc(m.title)}</b>${m.studentId ? ' <span class="badge one">For you only</span>' : ""}${m.description ? `<br><span class="muted fine">${esc(m.description)}</span>` : ""}</td><td>${esc(m.teacherName || "-")}</td>
       <td>${m.kind === "link" ? "Link" : esc(m.fileName) + " (" + sizeText(m.size) + ")"}</td><td>${m.createdAt?.toDate ? m.createdAt.toDate().toLocaleDateString() : "-"}</td>
       <td class="actions"><button class="btn small primary" data-open="${esc(m.id)}">${m.kind === "link" ? "Open" : "Download"}</button></td></tr>`) || "<tr><td colspan=5>No modules yet.</td></tr>");
   $("cTbl").innerHTML = "<tr><th>Section</th><th>Teacher</th><th>Joined</th><th></th></tr>" +
